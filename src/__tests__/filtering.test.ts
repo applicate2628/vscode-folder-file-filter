@@ -6,6 +6,7 @@ import {
   normalizeMask,
   normalizeMaxResults,
   normalizeOpenOnSelection,
+  normalizeRestoreFocusDelayMs,
   sortByRelativePath
 } from "../filtering";
 
@@ -37,6 +38,14 @@ test("normalizeAutoFilterFilesFromSelectedFile keeps booleans and falls back for
   assert.equal(normalizeAutoFilterFilesFromSelectedFile(true, false), true);
   assert.equal(normalizeAutoFilterFilesFromSelectedFile(false, true), false);
   assert.equal(normalizeAutoFilterFilesFromSelectedFile("true", false), false);
+});
+
+test("normalizeRestoreFocusDelayMs keeps non-negative finite numbers and falls back for invalid values", () => {
+  assert.equal(normalizeRestoreFocusDelayMs(250.8, 150), 250);
+  assert.equal(normalizeRestoreFocusDelayMs(0, 150), 0);
+  assert.equal(normalizeRestoreFocusDelayMs(-1, 150), 150);
+  assert.equal(normalizeRestoreFocusDelayMs(Number.NaN, 150), 150);
+  assert.equal(normalizeRestoreFocusDelayMs("250", 150), 150);
 });
 
 test("inferMaskFromFileName uses the selected file extension", () => {

@@ -23,6 +23,14 @@ export function normalizeAutoFilterFilesFromSelectedFile(value: unknown, fallbac
   return typeof value === "boolean" ? value : fallback;
 }
 
+export function normalizeRestoreFocusDelayMs(value: unknown, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return fallback;
+  }
+
+  return Math.floor(value);
+}
+
 export function inferMaskFromFileName(fileName: string): string {
   const trimmed = fileName.trim();
   if (!trimmed) {

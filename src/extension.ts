@@ -6,6 +6,7 @@ import {
   normalizeMask,
   normalizeMaxResults,
   normalizeOpenOnSelection,
+  normalizeRestoreFocusDelayMs,
   sortByRelativePath
 } from "./filtering";
 
@@ -14,6 +15,7 @@ const DEFAULT_MASK = "**/*";
 const DEFAULT_MAX_RESULTS = 500;
 const DEFAULT_OPEN_ON_SELECTION = false;
 const DEFAULT_AUTO_FILTER_FILES_FROM_SELECTED_FILE = true;
+const DEFAULT_RESTORE_FOCUS_AFTER_OPEN_DELAY_MS = 150;
 const VIEW_FOCUS_COMMAND = `${VIEW_ID}.focus`;
 const LIST_FOCUS_DOWN_COMMAND = "list.focusDown";
 const LIST_FOCUS_UP_COMMAND = "list.focusUp";
@@ -74,6 +76,7 @@ export function deactivate(): void {
 
 class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilterNode>, vscode.Disposable {
   private readonly changed = new vscode.EventEmitter<FolderFileFilterNode | undefined>();
+  private readonly focusRestoreTimers = new Set<ReturnType<typeof setTimeout>>();
   private nodes: FolderFileFilterNode[] = [
     {
       kind: "message",
@@ -93,6 +96,10 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
   }
 
   public dispose(): void {
+    for (const timer of this.focusRestoreTimers) {
+      clearTimeout(timer);
+    }
+    this.focusRestoreTimers.clear();
     this.changed.dispose();
   }
 
@@ -136,7 +143,7 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
         preview: true,
         preserveFocus: true
       });
-      await vscode.commands.executeCommand(VIEW_FOCUS_COMMAND);
+      this.restoreFocusAfterOpen();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       vscode.window.showErrorMessage(`Folder File Filter: ${message}`);
@@ -280,6 +287,26 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
     const countText = resultCount === undefined ? "" : ` (${resultCount})`;
     this.treeView.message = `${this.mask} in ${folderLabel(this.sourceFolder)}${countText}`;
   }
+
+  private restoreFocusAfterOpen(): void {
+    executeViewFocus();
+
+    const delayMs = configuredRestoreFocusAfterOpenDelayMs();
+    if (delayMs <= 0) {
+      return;
+    }
+
+    this.scheduleFocusRestore(delayMs);
+    this.scheduleFocusRestore(delayMs * 2);
+  }
+
+  private scheduleFocusRestore(delayMs: number): void {
+    const timer = setTimeout(() => {
+      this.focusRestoreTimers.delete(timer);
+      executeViewFocus();
+    }, delayMs);
+    this.focusRestoreTimers.add(timer);
+  }
 }
 
 async function isDirectory(uri: vscode.Uri): Promise<boolean> {
@@ -320,6 +347,15 @@ function configuredOpenOnSelection(): boolean {
 function configuredAutoFilterFilesFromSelectedFile(): boolean {
   const configured = vscode.workspace.getConfiguration("folderFileFilter").get<unknown>("autoFilterFilesFromSelectedFile");
   return normalizeAutoFilterFilesFromSelectedFile(configured, DEFAULT_AUTO_FILTER_FILES_FROM_SELECTED_FILE);
+}
+
+function configuredRestoreFocusAfterOpenDelayMs(): number {
+  const configured = vscode.workspace.getConfiguration("folderFileFilter").get<unknown>("restoreFocusAfterOpenDelayMs");
+  return normalizeRestoreFocusDelayMs(configured, DEFAULT_RESTORE_FOCUS_AFTER_OPEN_DELAY_MS);
+}
+
+function executeViewFocus(): void {
+  void vscode.commands.executeCommand(VIEW_FOCUS_COMMAND).then(undefined, () => undefined);
 }
 
 function isFileNode(node: FolderFileFilterNode): node is FileNode {

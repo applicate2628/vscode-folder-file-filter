@@ -29,12 +29,14 @@ For files, right-click a file in Explorer and run `Folder File Filter: Show File
   "folderFileFilter.defaultMask": "**/*",
   "folderFileFilter.maxResults": 500,
   "folderFileFilter.openOnSelection": false,
-  "folderFileFilter.autoFilterFilesFromSelectedFile": true
+  "folderFileFilter.autoFilterFilesFromSelectedFile": true,
+  "folderFileFilter.restoreFocusAfterOpenDelayMs": 150
 }
 ```
 
 Enable `folderFileFilter.openOnSelection` to open the highlighted result while moving through the list with Up/Down. Files open with their default editor in preview mode and focus stays in the `Folder File Filter` view.
 Disable `folderFileFilter.autoFilterFilesFromSelectedFile` to confirm or edit the inferred mask before the file context menu command runs.
+Increase `folderFileFilter.restoreFocusAfterOpenDelayMs` if a custom editor takes focus after opening and interrupts Up/Down navigation.
 
 ## License
 
