@@ -4,5 +4,7 @@ node_modules/**
 package-lock.json
 tsconfig.json
 .gitignore
+README.md
+README.marketplace.md
 *.vsix
 media/*.svg
