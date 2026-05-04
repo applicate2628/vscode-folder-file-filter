@@ -60,8 +60,8 @@
           "type": "boolean",
           "default": false,
           "order": 3,
-          "description": "Open the selected result immediately while moving through the Folder File Filter results list. Files open in preview mode and focus stays in the results view.",
-          "markdownDescription": "Open the selected result immediately while moving through the Folder File Filter results list. Files open in preview mode and focus stays in the results view."
+          "description": "Open the selected result immediately while moving through the Folder File Filter results list. Files open with their default editor in preview mode and focus stays in the results view.",
+          "markdownDescription": "Open the selected result immediately while moving through the Folder File Filter results list. Files open with their default editor in preview mode and focus stays in the results view."
         }
       }
     },

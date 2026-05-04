@@ -120,7 +120,7 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
     }
 
     try {
-      await vscode.window.showTextDocument(node.uri, {
+      await vscode.commands.executeCommand("vscode.open", node.uri, {
         preview: true,
         preserveFocus: true
       });
