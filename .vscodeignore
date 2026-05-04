@@ -1,0 +1,8 @@
+src/**
+out/__tests__/**
+node_modules/**
+package-lock.json
+tsconfig.json
+.gitignore
+*.vsix
+media/*.svg

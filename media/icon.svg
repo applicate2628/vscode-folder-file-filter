@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="Folder file filter icon">
+  <defs>
+    <linearGradient id="bg" x1="16" y1="8" x2="112" y2="120" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#14243a"/>
+      <stop offset="1" stop-color="#07111e"/>
+    </linearGradient>
+    <linearGradient id="folder" x1="23" y1="31" x2="105" y2="98" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fbbf24"/>
+      <stop offset="1" stop-color="#f59e0b"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="42" y1="48" x2="84" y2="98" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#e8f3ff"/>
+      <stop offset="1" stop-color="#a9c7e8"/>
+    </linearGradient>
+    <linearGradient id="filter" x1="71" y1="42" x2="105" y2="95" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#38bdf8"/>
+      <stop offset="1" stop-color="#22c55e"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#000000" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+
+  <rect x="8" y="8" width="112" height="112" rx="24" fill="url(#bg)" filter="url(#shadow)"/>
+  <path d="M23 39C23 34.6 26.6 31 31 31H51L59 39H97C101.4 39 105 42.6 105 47V88C105 93.5 100.5 98 95 98H33C27.5 98 23 93.5 23 88V39Z"
+        fill="url(#folder)"/>
+  <path d="M23 49H105V90C105 94.4 101.4 98 97 98H31C26.6 98 23 94.4 23 90V49Z"
+        fill="#d97706" opacity="0.74"/>
+
+  <g transform="translate(37 47)">
+    <rect x="0" y="0" width="46" height="52" rx="6" fill="url(#paper)" stroke="#f8fbff" stroke-width="2"/>
+    <path d="M12 16H34" stroke="#315a82" stroke-width="4" stroke-linecap="round"/>
+    <path d="M12 27H31" stroke="#315a82" stroke-width="4" stroke-linecap="round" opacity="0.82"/>
+    <path d="M12 38H25" stroke="#315a82" stroke-width="4" stroke-linecap="round" opacity="0.7"/>
+  </g>
+
+  <path d="M70 43H107L94 62V86L83 92V62L70 43Z"
+        fill="url(#filter)" stroke="#e0f7ff" stroke-width="3" stroke-linejoin="round"/>
+  <circle cx="91" cy="74" r="4" fill="#052e16" opacity="0.35"/>
+  <path d="M77 51H100" stroke="#e0f7ff" stroke-width="3" stroke-linecap="round" opacity="0.78"/>
+</svg>
