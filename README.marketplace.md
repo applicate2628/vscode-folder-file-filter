@@ -1,12 +1,12 @@
 # Folder File Filter
 
-Show files matching a glob mask from a selected Explorer folder.
+Find matching Markdown, config, test, log, or asset files inside a selected Explorer folder.
 
 ## Features
 
 - Adds a `Folder File Filter` view to the Explorer sidebar.
 - Adds `Folder File Filter: Show Matching Files` to folder context menus in Explorer.
-- Prompts for a glob mask such as `*.s2p`, `*.son`, or `**/*.ts`.
+- Prompts for a glob mask such as `**/*.md`, `**/*.json`, `**/*.test.ts`, `**/*.log`, or `**/*.png`.
 - Shows matching files from the selected source folder as clickable tree items.
 - Supports refresh and clear actions from the `Folder File Filter` view title.
 - Can open the highlighted result while moving through the results list.
@@ -40,6 +40,6 @@ See the repository `LICENSE` for the full MPL-2.0 text and `NOTICE` for copyrigh
 ## Terms and Abbreviations
 
 - `Explorer`: the VS Code sidebar that shows workspace folders and contributed views.
-- `Glob`: a path matching pattern such as `*.s2p` or `**/*.ts`.
+- `Glob`: a path matching pattern such as `**/*.md`, `**/*.json`, or `**/*.test.ts`.
 - `MPL`: Mozilla Public License.
 - `VS Code`: Visual Studio Code.

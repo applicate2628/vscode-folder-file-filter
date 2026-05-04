@@ -3,7 +3,7 @@ import test from "node:test";
 import { normalizeMask, normalizeMaxResults, normalizeOpenOnSelection, sortByRelativePath } from "../filtering";
 
 test("normalizeMask trims non-empty masks", () => {
-  assert.equal(normalizeMask("  **/*.s2p  "), "**/*.s2p");
+  assert.equal(normalizeMask("  **/*.md  "), "**/*.md");
 });
 
 test("normalizeMask rejects empty masks", () => {
@@ -28,14 +28,14 @@ test("normalizeOpenOnSelection keeps booleans and falls back for invalid values"
 
 test("sortByRelativePath returns files ordered by relative path", () => {
   const files = [
-    { relativePath: "zeta/file.s2p" },
-    { relativePath: "alpha/file.s2p" },
-    { relativePath: "alpha/next.s2p" }
+    { relativePath: "zeta/file.md" },
+    { relativePath: "alpha/file.md" },
+    { relativePath: "alpha/next.md" }
   ];
 
   assert.deepEqual(sortByRelativePath(files), [
-    { relativePath: "alpha/file.s2p" },
-    { relativePath: "alpha/next.s2p" },
-    { relativePath: "zeta/file.s2p" }
+    { relativePath: "alpha/file.md" },
+    { relativePath: "alpha/next.md" },
+    { relativePath: "zeta/file.md" }
   ]);
 });

@@ -1,7 +1,7 @@
 {
   "name": "vscode-folder-file-filter",
   "displayName": "Folder File Filter",
-  "description": "Show files matching a glob mask from a selected Explorer folder.",
+  "description": "Find matching Markdown, config, test, log, or asset files inside a selected Explorer folder.",
   "version": "0.0.6",
   "publisher": "applicate2628",
   "license": "MPL-2.0",
