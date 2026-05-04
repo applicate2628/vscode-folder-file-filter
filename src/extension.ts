@@ -6,6 +6,7 @@ const VIEW_ID = "folderFileFilter.results";
 const DEFAULT_MASK = "**/*";
 const DEFAULT_MAX_RESULTS = 500;
 const DEFAULT_OPEN_ON_SELECTION = false;
+const VIEW_FOCUS_COMMAND = `${VIEW_ID}.focus`;
 const LIST_FOCUS_DOWN_COMMAND = "list.focusDown";
 const LIST_FOCUS_UP_COMMAND = "list.focusUp";
 const LIST_SELECT_COMMAND = "list.select";
@@ -124,6 +125,7 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
         preview: true,
         preserveFocus: true
       });
+      await vscode.commands.executeCommand(VIEW_FOCUS_COMMAND);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       vscode.window.showErrorMessage(`Folder File Filter: ${message}`);
