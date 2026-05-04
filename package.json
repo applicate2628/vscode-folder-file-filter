@@ -42,17 +42,23 @@
         "folderFileFilter.defaultMask": {
           "type": "string",
           "default": "**/*",
+          "order": 1,
+          "description": "Default glob mask shown when filtering files in a selected folder.",
           "markdownDescription": "Default glob mask shown when filtering files in a selected folder."
         },
         "folderFileFilter.maxResults": {
           "type": "number",
           "default": 500,
           "minimum": 1,
+          "order": 2,
+          "description": "Maximum number of files returned by one folder file filter search.",
           "markdownDescription": "Maximum number of files returned by one folder file filter search."
         },
         "folderFileFilter.openOnSelection": {
           "type": "boolean",
           "default": false,
+          "order": 3,
+          "description": "Open the selected result immediately while moving through the Folder File Filter results list. Files open in preview mode and focus stays in the results view.",
           "markdownDescription": "Open the selected result immediately while moving through the Folder File Filter results list. Files open in preview mode and focus stays in the results view."
         }
       }
