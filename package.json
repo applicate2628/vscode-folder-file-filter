@@ -9,12 +9,24 @@
     "type": "git",
     "url": "https://github.com/applicate2628/vscode-folder-file-filter.git"
   },
+  "homepage": "https://github.com/applicate2628/vscode-folder-file-filter#readme",
+  "bugs": {
+    "url": "https://github.com/applicate2628/vscode-folder-file-filter/issues"
+  },
+  "keywords": [
+    "files",
+    "filter",
+    "explorer",
+    "glob",
+    "search"
+  ],
   "icon": "media/icon.png",
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Visualization"
   ],
   "activationEvents": [
     "onCommand:folderFileFilter.showMatchingFiles",

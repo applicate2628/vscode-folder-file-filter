@@ -35,6 +35,7 @@ Enable `folderFileFilter.openOnSelection` to open the highlighted result while m
 
 Commercial licensing is available separately.
 Unless you have a separate commercial license agreement, this project is licensed under MPL-2.0.
+See the repository `LICENSE` for the full MPL-2.0 text and `NOTICE` for copyright and commercial licensing notice.
 
 ## Terms and Abbreviations
 
