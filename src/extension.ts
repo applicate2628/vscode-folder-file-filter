@@ -61,6 +61,9 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("folderFileFilter.clear", () => {
       provider.clear();
     }),
+    vscode.commands.registerCommand("folderFileFilter.openSettings", async () => {
+      await vscode.commands.executeCommand("workbench.action.openSettings", "@ext:applicate2628.vscode-folder-file-filter");
+    }),
     vscode.commands.registerCommand("folderFileFilter.focusDownAndSelect", async () => {
       await provider.focusAndSelect(LIST_FOCUS_DOWN_COMMAND);
     }),

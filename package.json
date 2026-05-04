@@ -33,6 +33,7 @@
     "onCommand:folderFileFilter.showMatchingFilesFromFile",
     "onCommand:folderFileFilter.refresh",
     "onCommand:folderFileFilter.clear",
+    "onCommand:folderFileFilter.openSettings",
     "onCommand:folderFileFilter.focusDownAndSelect",
     "onCommand:folderFileFilter.focusUpAndSelect",
     "onView:folderFileFilter.results"
@@ -97,7 +98,7 @@
       },
       {
         "command": "folderFileFilter.showMatchingFilesFromFile",
-        "title": "Folder File Filter: Show Files With Same Extension",
+        "title": "Folder File Filter",
         "icon": "$(filter)"
       },
       {
@@ -109,6 +110,11 @@
         "command": "folderFileFilter.clear",
         "title": "Folder File Filter: Clear",
         "icon": "$(clear-all)"
+      },
+      {
+        "command": "folderFileFilter.openSettings",
+        "title": "Folder File Filter: Open Settings",
+        "icon": "$(settings-gear)"
       }
     ],
     "keybindings": [
@@ -126,13 +132,7 @@
     "menus": {
       "explorer/context": [
         {
-          "command": "folderFileFilter.showMatchingFiles",
-          "when": "explorerResourceIsFolder",
-          "group": "navigation"
-        },
-        {
           "command": "folderFileFilter.showMatchingFilesFromFile",
-          "when": "!explorerResourceIsFolder",
           "group": "navigation"
         }
       ],
@@ -144,6 +144,11 @@
         },
         {
           "command": "folderFileFilter.clear",
+          "when": "view == folderFileFilter.results",
+          "group": "navigation"
+        },
+        {
+          "command": "folderFileFilter.openSettings",
           "when": "view == folderFileFilter.results",
           "group": "navigation"
         }
