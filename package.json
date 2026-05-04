@@ -2,7 +2,7 @@
   "name": "vscode-folder-file-filter",
   "displayName": "Folder File Filter",
   "description": "Find matching Markdown, config, test, log, or asset files inside a selected Explorer folder.",
-  "version": "0.0.11",
+  "version": "0.0.12",
   "publisher": "applicate2628",
   "license": "MPL-2.0",
   "repository": {
