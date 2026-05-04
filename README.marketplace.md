@@ -6,6 +6,7 @@ Find matching Markdown, config, test, log, or asset files inside a selected Expl
 
 - Adds a `Folder File Filter` view to the Explorer sidebar.
 - Adds `Folder File Filter: Show Matching Files` to folder context menus in Explorer.
+- Adds `Folder File Filter: Show Files With Same Extension` to file context menus in Explorer.
 - Prompts for a glob mask such as `**/*.md`, `**/*.json`, `**/*.test.ts`, `**/*.log`, or `**/*.png`.
 - Shows matching files from the selected source folder as clickable tree items.
 - Supports refresh and clear actions from the `Folder File Filter` view title.
@@ -19,17 +20,21 @@ Find matching Markdown, config, test, log, or asset files inside a selected Expl
 4. Enter a glob mask.
 5. Open files from the `Folder File Filter` view.
 
+For files, right-click a file in Explorer and run `Folder File Filter: Show Files With Same Extension`. The command searches the selected file's parent folder using a mask inferred from the file name, such as `*.json` for `settings.json`.
+
 ## Settings
 
 ```json
 {
   "folderFileFilter.defaultMask": "**/*",
   "folderFileFilter.maxResults": 500,
-  "folderFileFilter.openOnSelection": false
+  "folderFileFilter.openOnSelection": false,
+  "folderFileFilter.autoFilterFilesFromSelectedFile": true
 }
 ```
 
 Enable `folderFileFilter.openOnSelection` to open the highlighted result while moving through the list with Up/Down. Files open with their default editor in preview mode and focus stays in the `Folder File Filter` view.
+Disable `folderFileFilter.autoFilterFilesFromSelectedFile` to confirm or edit the inferred mask before the file context menu command runs.
 
 ## License
 

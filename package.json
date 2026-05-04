@@ -30,6 +30,7 @@
   ],
   "activationEvents": [
     "onCommand:folderFileFilter.showMatchingFiles",
+    "onCommand:folderFileFilter.showMatchingFilesFromFile",
     "onCommand:folderFileFilter.refresh",
     "onCommand:folderFileFilter.clear",
     "onCommand:folderFileFilter.focusDownAndSelect",
@@ -62,6 +63,13 @@
           "order": 3,
           "description": "Open the selected result immediately while moving through the Folder File Filter results list. Files open with their default editor in preview mode and focus stays in the results view.",
           "markdownDescription": "Open the selected result immediately while moving through the Folder File Filter results list. Files open with their default editor in preview mode and focus stays in the results view."
+        },
+        "folderFileFilter.autoFilterFilesFromSelectedFile": {
+          "type": "boolean",
+          "default": true,
+          "order": 4,
+          "description": "When running Folder File Filter from a file, immediately show files in the same folder that match the selected file extension. Disable to confirm or edit the inferred mask first.",
+          "markdownDescription": "When running Folder File Filter from a file, immediately show files in the same folder that match the selected file extension. Disable to confirm or edit the inferred mask first."
         }
       }
     },
@@ -77,6 +85,11 @@
       {
         "command": "folderFileFilter.showMatchingFiles",
         "title": "Folder File Filter: Show Matching Files",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "folderFileFilter.showMatchingFilesFromFile",
+        "title": "Folder File Filter: Show Files With Same Extension",
         "icon": "$(filter)"
       },
       {
@@ -107,6 +120,11 @@
         {
           "command": "folderFileFilter.showMatchingFiles",
           "when": "explorerResourceIsFolder",
+          "group": "navigation"
+        },
+        {
+          "command": "folderFileFilter.showMatchingFilesFromFile",
+          "when": "!explorerResourceIsFolder",
           "group": "navigation"
         }
       ],

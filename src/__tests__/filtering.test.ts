@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalizeMask, normalizeMaxResults, normalizeOpenOnSelection, sortByRelativePath } from "../filtering";
+import {
+  inferMaskFromFileName,
+  normalizeAutoFilterFilesFromSelectedFile,
+  normalizeMask,
+  normalizeMaxResults,
+  normalizeOpenOnSelection,
+  sortByRelativePath
+} from "../filtering";
 
 test("normalizeMask trims non-empty masks", () => {
   assert.equal(normalizeMask("  **/*.md  "), "**/*.md");
@@ -24,6 +31,20 @@ test("normalizeOpenOnSelection keeps booleans and falls back for invalid values"
   assert.equal(normalizeOpenOnSelection(true, false), true);
   assert.equal(normalizeOpenOnSelection(false, true), false);
   assert.equal(normalizeOpenOnSelection("true", false), false);
+});
+
+test("normalizeAutoFilterFilesFromSelectedFile keeps booleans and falls back for invalid values", () => {
+  assert.equal(normalizeAutoFilterFilesFromSelectedFile(true, false), true);
+  assert.equal(normalizeAutoFilterFilesFromSelectedFile(false, true), false);
+  assert.equal(normalizeAutoFilterFilesFromSelectedFile("true", false), false);
+});
+
+test("inferMaskFromFileName uses the selected file extension", () => {
+  assert.equal(inferMaskFromFileName("settings.json"), "*.json");
+  assert.equal(inferMaskFromFileName("component.test.ts"), "*.ts");
+  assert.equal(inferMaskFromFileName(".env"), ".*");
+  assert.equal(inferMaskFromFileName("Makefile"), "Makefile");
+  assert.equal(inferMaskFromFileName("   "), "*");
 });
 
 test("sortByRelativePath returns files ordered by relative path", () => {

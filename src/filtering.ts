@@ -19,6 +19,28 @@ export function normalizeOpenOnSelection(value: unknown, fallback: boolean): boo
   return typeof value === "boolean" ? value : fallback;
 }
 
+export function normalizeAutoFilterFilesFromSelectedFile(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+export function inferMaskFromFileName(fileName: string): string {
+  const trimmed = fileName.trim();
+  if (!trimmed) {
+    return "*";
+  }
+
+  const dotIndex = trimmed.lastIndexOf(".");
+  if (dotIndex > 0 && dotIndex < trimmed.length - 1) {
+    return `*${trimmed.slice(dotIndex)}`;
+  }
+
+  if (dotIndex === 0 && trimmed.indexOf(".", 1) === -1) {
+    return ".*";
+  }
+
+  return trimmed;
+}
+
 export function sortByRelativePath<T extends RelativeFile>(files: readonly T[]): T[] {
   return [...files].sort((left, right) => left.relativePath.localeCompare(right.relativePath));
 }
