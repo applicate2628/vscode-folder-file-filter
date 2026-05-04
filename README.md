@@ -26,7 +26,13 @@ Every push to GitHub must include a version bump. Use the release script instead
 npm run release:patch
 ```
 
-The script bumps the package patch version, updates the local VSIX filename in this README, runs tests, packages the extension, runs `npm audit`, commits the version bump, and pushes the current branch to the configured `origin`. It does not hardcode the GitHub owner; forks push to their own `origin`.
+For Bash environments, use the equivalent script:
+
+```bash
+npm run release:patch:bash
+```
+
+Both scripts bump the package patch version, update the local VSIX filename in this README, run tests, package the extension, run `npm audit`, commit the version bump, and push the current branch to the configured `origin`. They do not hardcode the GitHub owner; forks push to their own `origin`.
 
 ## Install Local VSIX
 
@@ -64,6 +70,8 @@ See `LICENSE` for the full MPL-2.0 text and `NOTICE` for copyright and commercia
 
 - `Explorer`: the VS Code sidebar that shows workspace folders and contributed views.
 - `Glob`: a path matching pattern such as `**/*.md`, `**/*.json`, or `**/*.test.ts`.
+- `Bash`: a Unix-style command shell available on Linux, macOS, WSL, and Git Bash.
 - `MPL`: Mozilla Public License.
+- `PowerShell`: Microsoft's command shell used by the default release script on Windows.
 - `VS Code`: Visual Studio Code.
 - `VSIX`: the packaged install format for VS Code extensions.
