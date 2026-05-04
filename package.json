@@ -72,11 +72,18 @@
           "description": "When running Folder File Filter from a file, immediately show files in the same folder that match the selected file extension. Disable to confirm or edit the inferred mask first.",
           "markdownDescription": "When running Folder File Filter from a file, immediately show files in the same folder that match the selected file extension. Disable to confirm or edit the inferred mask first."
         },
+        "folderFileFilter.autoFilterFromActiveFile": {
+          "type": "boolean",
+          "default": true,
+          "order": 5,
+          "description": "Automatically update Folder File Filter when the active editor tab changes to a file. The filter uses that file's parent folder and inferred extension mask.",
+          "markdownDescription": "Automatically update Folder File Filter when the active editor tab changes to a file. The filter uses that file's parent folder and inferred extension mask."
+        },
         "folderFileFilter.restoreFocusAfterOpenDelayMs": {
           "type": "number",
           "default": 150,
           "minimum": 0,
-          "order": 5,
+          "order": 6,
           "description": "Delay before Folder File Filter restores focus again after auto-opening a result. Increase this if a custom editor takes focus after opening; set to 0 to disable delayed refocus.",
           "markdownDescription": "Delay before Folder File Filter restores focus again after auto-opening a result. Increase this if a custom editor takes focus after opening; set to `0` to disable delayed refocus."
         }

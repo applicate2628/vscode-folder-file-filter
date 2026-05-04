@@ -1,7 +1,9 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import {
+  inferMaskFromFileNames,
   inferMaskFromFileName,
+  normalizeAutoFilterFromActiveFile,
   normalizeAutoFilterFilesFromSelectedFile,
   normalizeMask,
   normalizeMaxResults,
@@ -15,6 +17,7 @@ const DEFAULT_MASK = "**/*";
 const DEFAULT_MAX_RESULTS = 500;
 const DEFAULT_OPEN_ON_SELECTION = false;
 const DEFAULT_AUTO_FILTER_FILES_FROM_SELECTED_FILE = true;
+const DEFAULT_AUTO_FILTER_FROM_ACTIVE_FILE = true;
 const DEFAULT_RESTORE_FOCUS_AFTER_OPEN_DELAY_MS = 150;
 const VIEW_FOCUS_COMMAND = `${VIEW_ID}.focus`;
 const LIST_FOCUS_DOWN_COMMAND = "list.focusDown";
@@ -22,6 +25,7 @@ const LIST_FOCUS_UP_COMMAND = "list.focusUp";
 const LIST_SELECT_COMMAND = "list.select";
 
 type FolderFileFilterNode = FileNode | MessageNode;
+type FilterOrigin = "manual" | "file";
 
 interface FileNode {
   kind: "file";
@@ -52,8 +56,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("folderFileFilter.showMatchingFiles", async (uri?: vscode.Uri) => {
       await provider.showMatchingFiles(uri);
     }),
-    vscode.commands.registerCommand("folderFileFilter.showMatchingFilesFromFile", async (uri?: vscode.Uri) => {
-      await provider.showMatchingFilesFromFile(uri);
+    vscode.commands.registerCommand("folderFileFilter.showMatchingFilesFromFile", async (uri?: vscode.Uri, selectedUris?: vscode.Uri[]) => {
+      await provider.showMatchingFilesFromFile(uri, selectedUris);
     }),
     vscode.commands.registerCommand("folderFileFilter.refresh", async () => {
       await provider.refresh();
@@ -69,8 +73,23 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand("folderFileFilter.focusUpAndSelect", async () => {
       await provider.focusAndSelect(LIST_FOCUS_UP_COMMAND);
+    }),
+    vscode.window.tabGroups.onDidChangeTabs(async (event) => {
+      if (event.opened.some((tab) => tab.isActive) || event.changed.some((tab) => tab.isActive)) {
+        await provider.showMatchingFilesFromActiveTab();
+      }
+    }),
+    vscode.window.tabGroups.onDidChangeTabGroups(async (event) => {
+      if (event.opened.some((group) => group.isActive) || event.changed.some((group) => group.isActive)) {
+        await provider.showMatchingFilesFromActiveTab();
+      }
+    }),
+    vscode.window.onDidChangeActiveTextEditor(async (editor) => {
+      await provider.showMatchingFilesFromActiveFile(editor?.document.uri);
     })
   );
+
+  void provider.showMatchingFilesFromActiveTab();
 }
 
 export function deactivate(): void {
@@ -90,6 +109,7 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
   private treeView: vscode.TreeView<FolderFileFilterNode> | undefined;
   private sourceFolder: vscode.Uri | undefined;
   private mask: string | undefined;
+  private filterOrigin: FilterOrigin | undefined;
 
   public readonly onDidChangeTreeData = this.changed.event;
 
@@ -177,22 +197,36 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
       return;
     }
 
-    await this.search(uri, mask);
+    await this.search(uri, mask, "manual");
   }
 
-  public async showMatchingFilesFromFile(uri?: vscode.Uri): Promise<void> {
+  public async showMatchingFilesFromFile(uri?: vscode.Uri, selectedUris?: readonly vscode.Uri[]): Promise<void> {
     if (!uri) {
       vscode.window.showWarningMessage("Folder File Filter: right-click a file in Explorer first.");
       return;
     }
 
-    if (await isDirectory(uri)) {
-      await this.showMatchingFiles(uri);
+    const targets = collectSelectedUris(uri, selectedUris);
+    const fileUris: vscode.Uri[] = [];
+
+    for (const target of targets) {
+      if (!(await isDirectory(target))) {
+        fileUris.push(target);
+      }
+    }
+
+    if (fileUris.length === 0) {
+      if (await isDirectory(uri)) {
+        await this.showMatchingFiles(uri);
+        return;
+      }
+
+      vscode.window.showWarningMessage("Folder File Filter: selected Explorer item is not a file.");
       return;
     }
 
-    const sourceFolder = parentFolderUri(uri);
-    const inferredMask = inferMaskFromFileName(fileNameFromUri(uri));
+    const sourceFolder = parentFolderUri(fileUris[0]);
+    const inferredMask = inferMaskFromFileNames(fileUris.map(fileNameFromUri));
     const mask = configuredAutoFilterFilesFromSelectedFile()
       ? inferredMask
       : await promptForMask(inferredMask);
@@ -200,7 +234,25 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
       return;
     }
 
-    await this.search(sourceFolder, mask);
+    await this.search(sourceFolder, mask, "file");
+  }
+
+  public async showMatchingFilesFromActiveTab(): Promise<void> {
+    await this.showMatchingFilesFromActiveFile(activeTabUri());
+  }
+
+  public async showMatchingFilesFromActiveFile(uri?: vscode.Uri): Promise<void> {
+    if (!configuredAutoFilterFromActiveFile() || !uri || uri.scheme !== "file" || await isDirectory(uri)) {
+      return;
+    }
+
+    const sourceFolder = parentFolderUri(uri);
+    const inferredMask = inferMaskFromFileName(fileNameFromUri(uri));
+    if (this.isCurrentFileFilter(sourceFolder, inferredMask)) {
+      return;
+    }
+
+    await this.searchIfChanged(sourceFolder, inferredMask, "file");
   }
 
   public async refresh(): Promise<void> {
@@ -209,12 +261,13 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
       return;
     }
 
-    await this.search(this.sourceFolder, this.mask);
+    await this.search(this.sourceFolder, this.mask, this.filterOrigin ?? "manual");
   }
 
   public clear(): void {
     this.sourceFolder = undefined;
     this.mask = undefined;
+    this.filterOrigin = undefined;
     this.nodes = [
       {
         kind: "message",
@@ -226,9 +279,10 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
     this.changed.fire(undefined);
   }
 
-  private async search(sourceFolder: vscode.Uri, mask: string): Promise<void> {
+  private async search(sourceFolder: vscode.Uri, mask: string, origin: FilterOrigin): Promise<void> {
     this.sourceFolder = sourceFolder;
     this.mask = mask;
+    this.filterOrigin = origin;
     this.nodes = [
       {
         kind: "message",
@@ -277,6 +331,14 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
     }
   }
 
+  private async searchIfChanged(sourceFolder: vscode.Uri, mask: string, origin: FilterOrigin): Promise<void> {
+    if (this.sourceFolder && sameUri(this.sourceFolder, sourceFolder) && this.mask === mask) {
+      return;
+    }
+
+    await this.search(sourceFolder, mask, origin);
+  }
+
   private updateTreeMessage(resultCount?: number): void {
     if (!this.treeView) {
       return;
@@ -289,6 +351,16 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
 
     const countText = resultCount === undefined ? "" : ` (${resultCount})`;
     this.treeView.message = `${this.mask} in ${folderLabel(this.sourceFolder)}${countText}`;
+  }
+
+  private isCurrentFileFilter(sourceFolder: vscode.Uri, inferredMask: string): boolean {
+    return Boolean(
+      this.sourceFolder
+      && this.filterOrigin === "file"
+      && sameUri(this.sourceFolder, sourceFolder)
+      && this.mask
+      && maskIncludes(this.mask, inferredMask)
+    );
   }
 
   private restoreFocusAfterOpen(): void {
@@ -352,6 +424,11 @@ function configuredAutoFilterFilesFromSelectedFile(): boolean {
   return normalizeAutoFilterFilesFromSelectedFile(configured, DEFAULT_AUTO_FILTER_FILES_FROM_SELECTED_FILE);
 }
 
+function configuredAutoFilterFromActiveFile(): boolean {
+  const configured = vscode.workspace.getConfiguration("folderFileFilter").get<unknown>("autoFilterFromActiveFile");
+  return normalizeAutoFilterFromActiveFile(configured, DEFAULT_AUTO_FILTER_FROM_ACTIVE_FILE);
+}
+
 function configuredRestoreFocusAfterOpenDelayMs(): number {
   const configured = vscode.workspace.getConfiguration("folderFileFilter").get<unknown>("restoreFocusAfterOpenDelayMs");
   return normalizeRestoreFocusDelayMs(configured, DEFAULT_RESTORE_FOCUS_AFTER_OPEN_DELAY_MS);
@@ -374,6 +451,57 @@ function parentFolderUri(uri: vscode.Uri): vscode.Uri {
   const slash = normalized.lastIndexOf("/");
   const parentPath = slash > 0 ? normalized.slice(0, slash) : "/";
   return uri.with({ path: parentPath });
+}
+
+function collectSelectedUris(primary: vscode.Uri, selectedUris?: readonly vscode.Uri[]): vscode.Uri[] {
+  const candidates = selectedUris && selectedUris.length > 0 ? selectedUris : [primary];
+  const seen = new Set<string>();
+  const uris: vscode.Uri[] = [];
+
+  for (const candidate of candidates) {
+    const key = candidate.toString();
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    uris.push(candidate);
+  }
+
+  return uris;
+}
+
+function activeTabUri(): vscode.Uri | undefined {
+  const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+  if (!input) {
+    return undefined;
+  }
+
+  if (input instanceof vscode.TabInputText || input instanceof vscode.TabInputCustom || input instanceof vscode.TabInputNotebook) {
+    return input.uri;
+  }
+
+  if (input instanceof vscode.TabInputTextDiff || input instanceof vscode.TabInputNotebookDiff) {
+    return input.modified;
+  }
+
+  return undefined;
+}
+
+function sameUri(left: vscode.Uri, right: vscode.Uri): boolean {
+  return left.toString() === right.toString();
+}
+
+function maskIncludes(mask: string, inferredMask: string): boolean {
+  if (mask === inferredMask) {
+    return true;
+  }
+
+  if (!mask.startsWith("{") || !mask.endsWith("}")) {
+    return false;
+  }
+
+  return mask.slice(1, -1).split(",").includes(inferredMask);
 }
 
 function fileNameFromUri(uri: vscode.Uri): string {

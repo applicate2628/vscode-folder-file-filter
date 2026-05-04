@@ -23,6 +23,10 @@ export function normalizeAutoFilterFilesFromSelectedFile(value: unknown, fallbac
   return typeof value === "boolean" ? value : fallback;
 }
 
+export function normalizeAutoFilterFromActiveFile(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
 export function normalizeRestoreFocusDelayMs(value: unknown, fallback: number): number {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
     return fallback;
@@ -49,6 +53,31 @@ export function inferMaskFromFileName(fileName: string): string {
   return trimmed;
 }
 
+export function inferMaskFromFileNames(fileNames: readonly string[]): string {
+  const masks = uniqueInOrder(fileNames.map(inferMaskFromFileName));
+  if (masks.length === 0) {
+    return "*";
+  }
+
+  return masks.length === 1 ? masks[0] : `{${masks.join(",")}}`;
+}
+
 export function sortByRelativePath<T extends RelativeFile>(files: readonly T[]): T[] {
   return [...files].sort((left, right) => left.relativePath.localeCompare(right.relativePath));
+}
+
+function uniqueInOrder(values: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+
+  for (const value of values) {
+    if (seen.has(value)) {
+      continue;
+    }
+
+    seen.add(value);
+    unique.push(value);
+  }
+
+  return unique;
 }

@@ -10,6 +10,8 @@ Find matching Markdown, config, test, log, or asset files inside a selected Expl
 - Adds `Folder File Filter: Open Settings` to the Command Palette.
 - Prompts for a glob mask such as `**/*.md`, `**/*.json`, `**/*.test.ts`, `**/*.log`, or `**/*.png`.
 - Shows matching files from the selected source folder as clickable tree items.
+- Can infer one filter from multiple selected files, such as `{*.json,*.md}`.
+- Can follow the active file tab and update the filter when a file with another extension is opened.
 - Supports refresh and clear actions from the `Folder File Filter` view title.
 - Can open the highlighted result while moving through the results list.
 
@@ -21,7 +23,7 @@ Find matching Markdown, config, test, log, or asset files inside a selected Expl
 4. Enter a glob mask.
 5. Open files from the `Folder File Filter` view.
 
-For files, right-click a file in Explorer and run `Folder File Filter`. The command searches the selected file's parent folder using a mask inferred from the file name, such as `*.json` for `settings.json`.
+For files, right-click a file in Explorer and run `Folder File Filter`. The command searches the selected file's parent folder using a mask inferred from the file name, such as `*.json` for `settings.json`. If several files are selected with Ctrl or Shift, the command combines their unique masks, such as `{*.json,*.md}`.
 
 To open extension settings, run `Folder File Filter: Open Settings` from the Command Palette.
 
@@ -33,12 +35,14 @@ To open extension settings, run `Folder File Filter: Open Settings` from the Com
   "folderFileFilter.maxResults": 500,
   "folderFileFilter.openOnSelection": false,
   "folderFileFilter.autoFilterFilesFromSelectedFile": true,
+  "folderFileFilter.autoFilterFromActiveFile": true,
   "folderFileFilter.restoreFocusAfterOpenDelayMs": 150
 }
 ```
 
 Enable `folderFileFilter.openOnSelection` to open the highlighted result while moving through the list with Up/Down. Files open with their default editor in preview mode and focus stays in the `Folder File Filter` view.
 Disable `folderFileFilter.autoFilterFilesFromSelectedFile` to confirm or edit the inferred mask before the file context menu command runs.
+Disable `folderFileFilter.autoFilterFromActiveFile` if opening a file in the editor should not update the active filter automatically.
 Increase `folderFileFilter.restoreFocusAfterOpenDelayMs` if a custom editor takes focus after opening and interrupts Up/Down navigation.
 
 ## License
@@ -51,5 +55,8 @@ See the repository `LICENSE` for the full MPL-2.0 text and `NOTICE` for copyrigh
 
 - `Explorer`: the VS Code sidebar that shows workspace folders and contributed views.
 - `Glob`: a path matching pattern such as `**/*.md`, `**/*.json`, or `**/*.test.ts`.
+- `Command Palette`: the VS Code command launcher opened with commands such as `Show All Commands`.
+- `Ctrl` and `Shift`: keyboard modifier keys used by VS Code Explorer for multi-selection.
+- `Custom editor`: a VS Code editor provided by an extension for a specific file type.
 - `MPL`: Mozilla Public License.
 - `VS Code`: Visual Studio Code.

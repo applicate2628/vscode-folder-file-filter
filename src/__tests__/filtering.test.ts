@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  inferMaskFromFileNames,
   inferMaskFromFileName,
+  normalizeAutoFilterFromActiveFile,
   normalizeAutoFilterFilesFromSelectedFile,
   normalizeMask,
   normalizeMaxResults,
@@ -40,6 +42,12 @@ test("normalizeAutoFilterFilesFromSelectedFile keeps booleans and falls back for
   assert.equal(normalizeAutoFilterFilesFromSelectedFile("true", false), false);
 });
 
+test("normalizeAutoFilterFromActiveFile keeps booleans and falls back for invalid values", () => {
+  assert.equal(normalizeAutoFilterFromActiveFile(true, false), true);
+  assert.equal(normalizeAutoFilterFromActiveFile(false, true), false);
+  assert.equal(normalizeAutoFilterFromActiveFile("true", false), false);
+});
+
 test("normalizeRestoreFocusDelayMs keeps non-negative finite numbers and falls back for invalid values", () => {
   assert.equal(normalizeRestoreFocusDelayMs(250.8, 150), 250);
   assert.equal(normalizeRestoreFocusDelayMs(0, 150), 0);
@@ -54,6 +62,18 @@ test("inferMaskFromFileName uses the selected file extension", () => {
   assert.equal(inferMaskFromFileName(".env"), ".*");
   assert.equal(inferMaskFromFileName("Makefile"), "Makefile");
   assert.equal(inferMaskFromFileName("   "), "*");
+});
+
+test("inferMaskFromFileNames combines unique masks in selection order", () => {
+  assert.equal(inferMaskFromFileNames(["m_006.s2p", "m_047.son", "m_005.s2p"]), "{*.s2p,*.son}");
+});
+
+test("inferMaskFromFileNames returns the single inferred mask for one extension", () => {
+  assert.equal(inferMaskFromFileNames(["settings.json", "launch.json"]), "*.json");
+});
+
+test("inferMaskFromFileNames falls back when the selection is empty", () => {
+  assert.equal(inferMaskFromFileNames([]), "*");
 });
 
 test("sortByRelativePath returns files ordered by relative path", () => {
