@@ -13,7 +13,6 @@ Standalone VS Code extension for showing files that match a glob mask from a sel
 ## Build
 
 ```powershell
-cd D:\dev\vscode-extensions\vscode-folder-file-filter
 npm install
 npm test
 npm run package
