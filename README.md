@@ -2,6 +2,10 @@
 
 Standalone VS Code extension for finding matching documents, configs, tests, logs, and assets inside a selected Explorer folder.
 
+[Install from VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=applicate2628.vscode-folder-file-filter) | [GitHub repository](https://github.com/applicate2628/vscode-folder-file-filter)
+
+![Folder File Filter showing matching TypeScript files from a selected folder](media/folder-file-filter-preview.png)
+
 ## Scope
 
 - Adds a `Folder File Filter` view to the Explorer sidebar.
@@ -76,6 +80,10 @@ Disable `folderFileFilter.autoFilterFilesFromSelectedFile` to confirm or edit th
 Disable `folderFileFilter.autoFilterFromActiveFile` if opening a file in the editor should not update the active filter automatically.
 Increase `folderFileFilter.restoreFocusAfterOpenDelayMs` if a custom editor takes focus after opening and interrupts Up/Down navigation.
 
+## Privacy And Security
+
+The extension searches local workspace files through the VS Code extension API and opens matches with VS Code's default editor selection. It does not upload files, make network requests, or collect telemetry.
+
 ## License
 
 Commercial licensing is available separately.
@@ -92,5 +100,7 @@ See `LICENSE` for the full MPL-2.0 text and `NOTICE` for copyright and commercia
 - `Custom editor`: a VS Code editor provided by an extension for a specific file type.
 - `MPL`: Mozilla Public License.
 - `PowerShell`: Microsoft's command shell used by the default release script on Windows.
+- `Telemetry`: automatic usage or diagnostic data collection; this extension does not collect it.
 - `VS Code`: Visual Studio Code.
+- `VS Code extension API`: the local API surface VS Code exposes to extensions.
 - `VSIX`: the packaged install format for VS Code extensions.

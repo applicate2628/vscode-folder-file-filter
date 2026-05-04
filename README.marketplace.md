@@ -2,6 +2,10 @@
 
 Find matching Markdown, config, test, log, or asset files inside a selected Explorer folder.
 
+[GitHub repository](https://github.com/applicate2628/vscode-folder-file-filter) | [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=applicate2628.vscode-folder-file-filter)
+
+![Folder File Filter showing matching TypeScript files from a selected folder](media/folder-file-filter-preview.png)
+
 ## Features
 
 - Adds a `Folder File Filter` view to the Explorer sidebar.
@@ -45,6 +49,10 @@ Disable `folderFileFilter.autoFilterFilesFromSelectedFile` to confirm or edit th
 Disable `folderFileFilter.autoFilterFromActiveFile` if opening a file in the editor should not update the active filter automatically.
 Increase `folderFileFilter.restoreFocusAfterOpenDelayMs` if a custom editor takes focus after opening and interrupts Up/Down navigation.
 
+## Privacy And Security
+
+The extension searches local workspace files through the VS Code extension API and opens matches with VS Code's default editor selection. It does not upload files, make network requests, or collect telemetry.
+
 ## License
 
 Commercial licensing is available separately.
@@ -59,4 +67,6 @@ See the repository `LICENSE` for the full MPL-2.0 text and `NOTICE` for copyrigh
 - `Ctrl` and `Shift`: keyboard modifier keys used by VS Code Explorer for multi-selection.
 - `Custom editor`: a VS Code editor provided by an extension for a specific file type.
 - `MPL`: Mozilla Public License.
+- `Telemetry`: automatic usage or diagnostic data collection; this extension does not collect it.
 - `VS Code`: Visual Studio Code.
+- `VS Code extension API`: the local API surface VS Code exposes to extensions.

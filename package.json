@@ -1,7 +1,7 @@
 {
   "name": "vscode-folder-file-filter",
   "displayName": "Folder File Filter",
-  "description": "Find matching Markdown, config, test, log, or asset files inside a selected Explorer folder.",
+  "description": "Filter files by glob mask inside a selected VS Code Explorer folder.",
   "version": "0.0.13",
   "publisher": "applicate2628",
   "license": "MPL-2.0",
@@ -14,11 +14,21 @@
     "url": "https://github.com/applicate2628/vscode-folder-file-filter/issues"
   },
   "keywords": [
+    "folder",
     "files",
     "filter",
+    "file-filter",
     "explorer",
     "glob",
-    "search"
+    "search",
+    "quick-open",
+    "markdown",
+    "json",
+    "tests",
+    "logs",
+    "assets",
+    "productivity",
+    "tree-view"
   ],
   "icon": "media/icon.png",
   "engines": {
