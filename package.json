@@ -32,6 +32,8 @@
     "onCommand:folderFileFilter.showMatchingFiles",
     "onCommand:folderFileFilter.refresh",
     "onCommand:folderFileFilter.clear",
+    "onCommand:folderFileFilter.focusDownAndSelect",
+    "onCommand:folderFileFilter.focusUpAndSelect",
     "onView:folderFileFilter.results"
   ],
   "main": "./out/extension.js",
@@ -86,6 +88,18 @@
         "command": "folderFileFilter.clear",
         "title": "Folder File Filter: Clear",
         "icon": "$(clear-all)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "folderFileFilter.focusDownAndSelect",
+        "key": "down",
+        "when": "focusedView == folderFileFilter.results && config.folderFileFilter.openOnSelection"
+      },
+      {
+        "command": "folderFileFilter.focusUpAndSelect",
+        "key": "up",
+        "when": "focusedView == folderFileFilter.results && config.folderFileFilter.openOnSelection"
       }
     ],
     "menus": {

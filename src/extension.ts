@@ -6,6 +6,9 @@ const VIEW_ID = "folderFileFilter.results";
 const DEFAULT_MASK = "**/*";
 const DEFAULT_MAX_RESULTS = 500;
 const DEFAULT_OPEN_ON_SELECTION = false;
+const LIST_FOCUS_DOWN_COMMAND = "list.focusDown";
+const LIST_FOCUS_UP_COMMAND = "list.focusUp";
+const LIST_SELECT_COMMAND = "list.select";
 
 type FolderFileFilterNode = FileNode | MessageNode;
 
@@ -43,6 +46,12 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand("folderFileFilter.clear", () => {
       provider.clear();
+    }),
+    vscode.commands.registerCommand("folderFileFilter.focusDownAndSelect", async () => {
+      await provider.focusAndSelect(LIST_FOCUS_DOWN_COMMAND);
+    }),
+    vscode.commands.registerCommand("folderFileFilter.focusUpAndSelect", async () => {
+      await provider.focusAndSelect(LIST_FOCUS_UP_COMMAND);
     })
   );
 }
@@ -118,6 +127,14 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       vscode.window.showErrorMessage(`Folder File Filter: ${message}`);
+    }
+  }
+
+  public async focusAndSelect(focusCommand: string): Promise<void> {
+    await vscode.commands.executeCommand(focusCommand);
+
+    if (configuredOpenOnSelection()) {
+      await vscode.commands.executeCommand(LIST_SELECT_COMMAND);
     }
   }
 

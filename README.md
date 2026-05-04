@@ -58,7 +58,7 @@ code --install-extension .\vscode-folder-file-filter-0.0.9.vsix
 }
 ```
 
-Enable `folderFileFilter.openOnSelection` to open the highlighted result while moving through the list. Files open in preview mode and focus stays in the `Folder File Filter` view.
+Enable `folderFileFilter.openOnSelection` to open the highlighted result while moving through the list with Up/Down. Files open in preview mode and focus stays in the `Folder File Filter` view.
 
 ## License
 
