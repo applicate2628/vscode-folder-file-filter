@@ -31,7 +31,7 @@ The script bumps the package patch version, updates the local VSIX filename in t
 ## Install Local VSIX
 
 ```powershell
-code --install-extension .\vscode-folder-file-filter-0.0.3.vsix
+code --install-extension .\vscode-folder-file-filter-0.0.4.vsix
 ```
 
 ## Use
