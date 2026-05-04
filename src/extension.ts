@@ -1,10 +1,11 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { normalizeMask, normalizeMaxResults, sortByRelativePath } from "./filtering";
+import { normalizeMask, normalizeMaxResults, normalizeOpenOnSelection, sortByRelativePath } from "./filtering";
 
 const VIEW_ID = "folderFileFilter.results";
 const DEFAULT_MASK = "**/*";
 const DEFAULT_MAX_RESULTS = 500;
+const DEFAULT_OPEN_ON_SELECTION = false;
 
 type FolderFileFilterNode = FileNode | MessageNode;
 
@@ -31,6 +32,9 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     provider,
     treeView,
+    treeView.onDidChangeSelection(async (event) => {
+      await provider.openSelectedFile(event.selection);
+    }),
     vscode.commands.registerCommand("folderFileFilter.showMatchingFiles", async (uri?: vscode.Uri) => {
       await provider.showMatchingFiles(uri);
     }),
@@ -94,6 +98,27 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
 
   public getChildren(node?: FolderFileFilterNode): FolderFileFilterNode[] {
     return node ? [] : this.nodes;
+  }
+
+  public async openSelectedFile(selection: readonly FolderFileFilterNode[]): Promise<void> {
+    if (!configuredOpenOnSelection()) {
+      return;
+    }
+
+    const node = selection.find(isFileNode);
+    if (!node) {
+      return;
+    }
+
+    try {
+      await vscode.window.showTextDocument(node.uri, {
+        preview: true,
+        preserveFocus: true
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showErrorMessage(`Folder File Filter: ${message}`);
+    }
   }
 
   public async showMatchingFiles(uri?: vscode.Uri): Promise<void> {
@@ -232,6 +257,15 @@ function configuredDefaultMask(): string {
 function configuredMaxResults(): number {
   const configured = vscode.workspace.getConfiguration("folderFileFilter").get<unknown>("maxResults");
   return normalizeMaxResults(configured, DEFAULT_MAX_RESULTS);
+}
+
+function configuredOpenOnSelection(): boolean {
+  const configured = vscode.workspace.getConfiguration("folderFileFilter").get<unknown>("openOnSelection");
+  return normalizeOpenOnSelection(configured, DEFAULT_OPEN_ON_SELECTION);
+}
+
+function isFileNode(node: FolderFileFilterNode): node is FileNode {
+  return node.kind === "file";
 }
 
 function relativePathFrom(sourceFolder: vscode.Uri, file: vscode.Uri): string {

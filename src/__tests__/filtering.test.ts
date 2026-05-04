@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalizeMask, normalizeMaxResults, sortByRelativePath } from "../filtering";
+import { normalizeMask, normalizeMaxResults, normalizeOpenOnSelection, sortByRelativePath } from "../filtering";
 
 test("normalizeMask trims non-empty masks", () => {
   assert.equal(normalizeMask("  **/*.s2p  "), "**/*.s2p");
@@ -18,6 +18,12 @@ test("normalizeMaxResults falls back for invalid values", () => {
   assert.equal(normalizeMaxResults(0, 500), 500);
   assert.equal(normalizeMaxResults(Number.NaN, 500), 500);
   assert.equal(normalizeMaxResults("100", 500), 500);
+});
+
+test("normalizeOpenOnSelection keeps booleans and falls back for invalid values", () => {
+  assert.equal(normalizeOpenOnSelection(true, false), true);
+  assert.equal(normalizeOpenOnSelection(false, true), false);
+  assert.equal(normalizeOpenOnSelection("true", false), false);
 });
 
 test("sortByRelativePath returns files ordered by relative path", () => {

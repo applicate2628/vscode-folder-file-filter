@@ -13,7 +13,7 @@ Standalone VS Code extension for showing files that match a glob mask from a sel
 ## Build
 
 ```powershell
-cd tools\vscode-folder-file-filter
+cd D:\dev\vscode-extensions\vscode-folder-file-filter
 npm install
 npm test
 npm run package
@@ -22,7 +22,7 @@ npm run package
 ## Install Local VSIX
 
 ```powershell
-code --install-extension .\vscode-folder-file-filter-0.0.1.vsix
+code --install-extension .\vscode-folder-file-filter-0.0.2.vsix
 ```
 
 ## Use
@@ -38,9 +38,12 @@ code --install-extension .\vscode-folder-file-filter-0.0.1.vsix
 ```json
 {
   "folderFileFilter.defaultMask": "**/*",
-  "folderFileFilter.maxResults": 500
+  "folderFileFilter.maxResults": 500,
+  "folderFileFilter.openOnSelection": false
 }
 ```
+
+Enable `folderFileFilter.openOnSelection` to open the highlighted result while moving through the list. Files open in preview mode and focus stays in the `Folder File Filter` view.
 
 ## License
 

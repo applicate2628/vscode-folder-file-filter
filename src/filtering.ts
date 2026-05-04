@@ -15,6 +15,10 @@ export function normalizeMaxResults(value: unknown, fallback: number): number {
   return Math.floor(value);
 }
 
+export function normalizeOpenOnSelection(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
 export function sortByRelativePath<T extends RelativeFile>(files: readonly T[]): T[] {
   return [...files].sort((left, right) => left.relativePath.localeCompare(right.relativePath));
 }
