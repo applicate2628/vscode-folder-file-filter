@@ -15,6 +15,7 @@ Standalone VS Code extension for finding matching documents, configs, tests, log
 - Prompts for a glob mask such as `**/*.md`, `**/*.json`, `**/*.test.ts`, `**/*.log`, or `**/*.png`.
 - Shows matching files from the selected source folder as clickable tree items.
 - Can infer one filter from multiple selected files, such as `{*.json,*.md}`.
+- Supports native Ctrl/Shift multi-selection and result context-menu actions for open, open to side, reveal in File Explorer, and copy path.
 - Can follow the active file tab and update the filter when a file with another extension is opened.
 - Supports refresh and clear actions from the `Folder File Filter` view title.
 
@@ -59,6 +60,7 @@ code --install-extension .\vscode-folder-file-filter-0.0.14.vsix
 5. Open files from the `Folder File Filter` view.
 
 For files, right-click a file in Explorer and run `Folder File Filter`. The command searches the selected file's parent folder using a mask inferred from the file name, such as `*.json` for `settings.json`. If several files are selected with Ctrl or Shift, the command combines their unique masks, such as `{*.json,*.md}`.
+The `Folder File Filter` results view also supports native Ctrl/Shift multi-selection.
 
 To open extension settings, run `Folder File Filter: Open Settings` from the Command Palette.
 

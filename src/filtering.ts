@@ -66,6 +66,19 @@ export function sortByRelativePath<T extends RelativeFile>(files: readonly T[]):
   return [...files].sort((left, right) => left.relativePath.localeCompare(right.relativePath));
 }
 
+export function pickSelectionKeyToOpen(
+  previousSelectionKeys: ReadonlySet<string>,
+  currentSelectionKeys: readonly string[]
+): string | undefined {
+  for (const key of currentSelectionKeys) {
+    if (!previousSelectionKeys.has(key)) {
+      return key;
+    }
+  }
+
+  return currentSelectionKeys[currentSelectionKeys.length - 1];
+}
+
 function uniqueInOrder(values: readonly string[]): string[] {
   const seen = new Set<string>();
   const unique: string[] = [];

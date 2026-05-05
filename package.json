@@ -44,6 +44,11 @@
     "onCommand:folderFileFilter.refresh",
     "onCommand:folderFileFilter.clear",
     "onCommand:folderFileFilter.openSettings",
+    "onCommand:folderFileFilter.openResult",
+    "onCommand:folderFileFilter.openResultToSide",
+    "onCommand:folderFileFilter.revealResultInOS",
+    "onCommand:folderFileFilter.copyResultPath",
+    "onCommand:folderFileFilter.copyResultRelativePath",
     "onCommand:folderFileFilter.focusDownAndSelect",
     "onCommand:folderFileFilter.focusUpAndSelect",
     "onView:folderFileFilter.results"
@@ -132,6 +137,31 @@
         "command": "folderFileFilter.openSettings",
         "title": "Folder File Filter: Open Settings",
         "icon": "$(settings-gear)"
+      },
+      {
+        "command": "folderFileFilter.openResult",
+        "title": "Open",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "folderFileFilter.openResultToSide",
+        "title": "Open to the Side",
+        "icon": "$(split-horizontal)"
+      },
+      {
+        "command": "folderFileFilter.revealResultInOS",
+        "title": "Reveal in File Explorer",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "folderFileFilter.copyResultPath",
+        "title": "Copy Path",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "folderFileFilter.copyResultRelativePath",
+        "title": "Copy Relative Path",
+        "icon": "$(copy)"
       }
     ],
     "keybindings": [
@@ -147,6 +177,28 @@
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "folderFileFilter.openResult",
+          "when": "false"
+        },
+        {
+          "command": "folderFileFilter.openResultToSide",
+          "when": "false"
+        },
+        {
+          "command": "folderFileFilter.revealResultInOS",
+          "when": "false"
+        },
+        {
+          "command": "folderFileFilter.copyResultPath",
+          "when": "false"
+        },
+        {
+          "command": "folderFileFilter.copyResultRelativePath",
+          "when": "false"
+        }
+      ],
       "explorer/context": [
         {
           "command": "folderFileFilter.showMatchingFilesFromFile",
@@ -168,6 +220,33 @@
           "command": "folderFileFilter.openSettings",
           "when": "view == folderFileFilter.results",
           "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "folderFileFilter.openResult",
+          "when": "view == folderFileFilter.results && viewItem == folderFileFilter.file",
+          "group": "navigation@1"
+        },
+        {
+          "command": "folderFileFilter.openResultToSide",
+          "when": "view == folderFileFilter.results && viewItem == folderFileFilter.file",
+          "group": "navigation@2"
+        },
+        {
+          "command": "folderFileFilter.revealResultInOS",
+          "when": "view == folderFileFilter.results && viewItem == folderFileFilter.file",
+          "group": "2_workspace@1"
+        },
+        {
+          "command": "folderFileFilter.copyResultPath",
+          "when": "view == folderFileFilter.results && viewItem == folderFileFilter.file",
+          "group": "3_copy@1"
+        },
+        {
+          "command": "folderFileFilter.copyResultRelativePath",
+          "when": "view == folderFileFilter.results && viewItem == folderFileFilter.file",
+          "group": "3_copy@2"
         }
       ]
     },

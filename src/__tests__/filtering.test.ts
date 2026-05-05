@@ -9,6 +9,7 @@ import {
   normalizeMaxResults,
   normalizeOpenOnSelection,
   normalizeRestoreFocusDelayMs,
+  pickSelectionKeyToOpen,
   sortByRelativePath
 } from "../filtering";
 
@@ -88,4 +89,19 @@ test("sortByRelativePath returns files ordered by relative path", () => {
     { relativePath: "alpha/next.md" },
     { relativePath: "zeta/file.md" }
   ]);
+});
+
+test("pickSelectionKeyToOpen prefers the newly selected key", () => {
+  assert.equal(
+    pickSelectionKeyToOpen(new Set(["a", "b"]), ["a", "b", "c"]),
+    "c"
+  );
+});
+
+test("pickSelectionKeyToOpen falls back to the last selected key", () => {
+  assert.equal(
+    pickSelectionKeyToOpen(new Set(["a", "b"]), ["a", "b"]),
+    "b"
+  );
+  assert.equal(pickSelectionKeyToOpen(new Set(["a"]), []), undefined);
 });

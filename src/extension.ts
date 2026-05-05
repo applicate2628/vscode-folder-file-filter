@@ -9,6 +9,7 @@ import {
   normalizeMaxResults,
   normalizeOpenOnSelection,
   normalizeRestoreFocusDelayMs,
+  pickSelectionKeyToOpen,
   sortByRelativePath
 } from "./filtering";
 
@@ -43,6 +44,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const provider = new FolderFileFilterProvider();
   const treeView = vscode.window.createTreeView(VIEW_ID, {
     treeDataProvider: provider,
+    canSelectMany: true,
     showCollapseAll: false
   });
   provider.bindTreeView(treeView);
@@ -67,6 +69,21 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand("folderFileFilter.openSettings", async () => {
       await vscode.commands.executeCommand("workbench.action.openSettings", "@ext:applicate2628.vscode-folder-file-filter");
+    }),
+    vscode.commands.registerCommand("folderFileFilter.openResult", async (node?: FolderFileFilterNode) => {
+      await provider.openContextFiles(node);
+    }),
+    vscode.commands.registerCommand("folderFileFilter.openResultToSide", async (node?: FolderFileFilterNode) => {
+      await provider.openContextFilesToSide(node);
+    }),
+    vscode.commands.registerCommand("folderFileFilter.revealResultInOS", async (node?: FolderFileFilterNode) => {
+      await provider.revealContextFileInOS(node);
+    }),
+    vscode.commands.registerCommand("folderFileFilter.copyResultPath", async (node?: FolderFileFilterNode) => {
+      await provider.copyContextFilePaths(node);
+    }),
+    vscode.commands.registerCommand("folderFileFilter.copyResultRelativePath", async (node?: FolderFileFilterNode) => {
+      await provider.copyContextFileRelativePaths(node);
     }),
     vscode.commands.registerCommand("folderFileFilter.focusDownAndSelect", async () => {
       await provider.focusAndSelect(LIST_FOCUS_DOWN_COMMAND);
@@ -110,6 +127,7 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
   private sourceFolder: vscode.Uri | undefined;
   private mask: string | undefined;
   private filterOrigin: FilterOrigin | undefined;
+  private lastSelectionKeys = new Set<string>();
 
   public readonly onDidChangeTreeData = this.changed.event;
 
@@ -151,12 +169,76 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
     return node ? [] : this.nodes;
   }
 
+  public async openContextFiles(node?: FolderFileFilterNode): Promise<void> {
+    const files = this.contextFileNodes(node);
+    if (files.length === 0) {
+      vscode.window.showInformationMessage("Folder File Filter: no file result selected.");
+      return;
+    }
+
+    await this.runForContextFiles(files, async (file) => {
+      await vscode.commands.executeCommand("vscode.open", file.uri);
+    });
+  }
+
+  public async openContextFilesToSide(node?: FolderFileFilterNode): Promise<void> {
+    const files = this.contextFileNodes(node);
+    if (files.length === 0) {
+      vscode.window.showInformationMessage("Folder File Filter: no file result selected.");
+      return;
+    }
+
+    await this.runForContextFiles(files, async (file) => {
+      await vscode.commands.executeCommand("vscode.open", file.uri, {
+        viewColumn: vscode.ViewColumn.Beside,
+        preview: files.length === 1
+      });
+    });
+  }
+
+  public async revealContextFileInOS(node?: FolderFileFilterNode): Promise<void> {
+    const [file] = this.contextFileNodes(node);
+    if (!file) {
+      vscode.window.showInformationMessage("Folder File Filter: no file result selected.");
+      return;
+    }
+
+    await vscode.commands.executeCommand("revealFileInOS", file.uri);
+  }
+
+  public async copyContextFilePaths(node?: FolderFileFilterNode): Promise<void> {
+    const files = this.contextFileNodes(node);
+    if (files.length === 0) {
+      vscode.window.showInformationMessage("Folder File Filter: no file result selected.");
+      return;
+    }
+
+    const paths = files.map((file) => uriLabel(file.uri)).join("\n");
+    await vscode.env.clipboard.writeText(paths);
+  }
+
+  public async copyContextFileRelativePaths(node?: FolderFileFilterNode): Promise<void> {
+    const files = this.contextFileNodes(node);
+    if (files.length === 0) {
+      vscode.window.showInformationMessage("Folder File Filter: no file result selected.");
+      return;
+    }
+
+    const paths = files.map((file) => file.relativePath).join("\n");
+    await vscode.env.clipboard.writeText(paths);
+  }
+
   public async openSelectedFile(selection: readonly FolderFileFilterNode[]): Promise<void> {
     if (!configuredOpenOnSelection()) {
       return;
     }
 
-    const node = selection.find(isFileNode);
+    const fileNodes = selection.filter(isFileNode);
+    const selectedKeys = fileNodes.map(selectionKeyForNode);
+    const keyToOpen = pickSelectionKeyToOpen(this.lastSelectionKeys, selectedKeys);
+    this.lastSelectionKeys = new Set(selectedKeys);
+
+    const node = fileNodes.find((item) => selectionKeyForNode(item) === keyToOpen);
     if (!node) {
       return;
     }
@@ -268,6 +350,7 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
     this.sourceFolder = undefined;
     this.mask = undefined;
     this.filterOrigin = undefined;
+    this.lastSelectionKeys.clear();
     this.nodes = [
       {
         kind: "message",
@@ -283,6 +366,7 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
     this.sourceFolder = sourceFolder;
     this.mask = mask;
     this.filterOrigin = origin;
+    this.lastSelectionKeys.clear();
     this.nodes = [
       {
         kind: "message",
@@ -382,6 +466,31 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
     }, delayMs);
     this.focusRestoreTimers.add(timer);
   }
+
+  private contextFileNodes(node?: FolderFileFilterNode): FileNode[] {
+    const selected = this.treeView?.selection.filter(isFileNode) ?? [];
+    if (!isFileNode(node)) {
+      return selected;
+    }
+
+    if (selected.some((selectedNode) => sameUri(selectedNode.uri, node.uri))) {
+      return selected;
+    }
+
+    return [node];
+  }
+
+  private async runForContextFiles(files: readonly FileNode[], action: (file: FileNode) => Thenable<unknown>): Promise<void> {
+    for (const file of files) {
+      try {
+        await action(file);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        vscode.window.showErrorMessage(`Folder File Filter: ${message}`);
+        return;
+      }
+    }
+  }
 }
 
 async function isDirectory(uri: vscode.Uri): Promise<boolean> {
@@ -438,8 +547,16 @@ function executeViewFocus(): void {
   void vscode.commands.executeCommand(VIEW_FOCUS_COMMAND).then(undefined, () => undefined);
 }
 
-function isFileNode(node: FolderFileFilterNode): node is FileNode {
-  return node.kind === "file";
+function isFileNode(node: FolderFileFilterNode | undefined): node is FileNode {
+  return node?.kind === "file";
+}
+
+function selectionKeyForNode(node: FileNode): string {
+  return node.uri.toString();
+}
+
+function uriLabel(uri: vscode.Uri): string {
+  return uri.scheme === "file" ? uri.fsPath : uri.toString(true);
 }
 
 function parentFolderUri(uri: vscode.Uri): vscode.Uri {
