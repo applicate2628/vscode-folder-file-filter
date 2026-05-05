@@ -12,8 +12,6 @@ Filter folder files by glob mask, file extension, or active file context inside 
 
 ![Folder File Filter demo in VS Code highlighting the Explorer results view with matching CSV files](media/folder-file-filter-demo.gif)
 
-![Folder File Filter preview in VS Code showing matching CSV files from a selected folder](media/folder-file-filter-preview.png)
-
 ## Features
 
 - Adds a `Folder File Filter` view to the Explorer sidebar.

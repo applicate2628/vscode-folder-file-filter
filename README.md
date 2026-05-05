@@ -12,8 +12,6 @@ VS Code extension for filtering folder files by glob mask, file extension, or ac
 
 ![Folder File Filter demo in VS Code highlighting the Explorer results view with matching CSV files](media/folder-file-filter-demo.gif)
 
-![Folder File Filter preview in VS Code showing matching CSV files from a selected folder](media/folder-file-filter-preview.png)
-
 ## Scope
 
 - Adds a `Folder File Filter` view to the Explorer sidebar.
@@ -64,7 +62,7 @@ Both scripts bump the package patch version once for the batch, update the local
 ## Install Local VSIX
 
 ```powershell
-code --install-extension .\vscode-folder-file-filter-0.0.17.vsix
+code --install-extension .\vscode-folder-file-filter-0.0.18.vsix
 ```
 
 ## Use
