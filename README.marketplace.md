@@ -6,7 +6,7 @@ Filter folder files by glob mask, file extension, or active file context inside 
 
 ## Why Use It
 
-- Filter one folder by mask or extension without running a full workspace search.
+- Filter one folder by mask or extension without running a broad project search.
 - Browse matching neighbors directly in Explorer while keeping file opening predictable.
 - Use the active file context to jump between related docs, configs, tests, logs, and assets.
 

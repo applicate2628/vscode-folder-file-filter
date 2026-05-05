@@ -6,7 +6,7 @@ VS Code extension for filtering folder files by glob mask, file extension, or ac
 
 ## Why Use It
 
-- Filter one folder by mask or extension without running a full workspace search.
+- Filter one folder by mask or extension without running a broad project search.
 - Browse matching neighbors directly in Explorer while keeping file opening predictable.
 - Use the active file context to jump between related docs, configs, tests, logs, and assets.
 
@@ -64,7 +64,7 @@ Both scripts bump the package patch version once for the batch, update the local
 ## Install Local VSIX
 
 ```powershell
-code --install-extension .\vscode-folder-file-filter-0.0.16.vsix
+code --install-extension .\vscode-folder-file-filter-0.0.17.vsix
 ```
 
 ## Use
