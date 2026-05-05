@@ -1,8 +1,8 @@
 {
   "name": "vscode-folder-file-filter",
   "displayName": "Folder File Filter",
-  "description": "Filter files by glob mask inside a selected VS Code Explorer folder.",
-  "version": "0.0.15",
+  "description": "Filter folder files by glob, extension, or active file context inside VS Code Explorer.",
+  "version": "0.0.16",
   "publisher": "applicate2628",
   "license": "MPL-2.0",
   "repository": {
@@ -13,20 +13,32 @@
   "bugs": {
     "url": "https://github.com/applicate2628/vscode-folder-file-filter/issues"
   },
+  "galleryBanner": {
+    "color": "#1f6f6d",
+    "theme": "dark"
+  },
   "keywords": [
     "folder",
     "files",
     "filter",
+    "filter files",
+    "folder filter",
     "file-filter",
     "explorer",
+    "file explorer",
+    "file browser",
+    "find files",
     "glob",
+    "glob mask",
+    "file mask",
     "search",
+    "workspace search",
     "quick-open",
-    "markdown",
-    "json",
-    "tests",
-    "logs",
-    "assets",
+    "context menu",
+    "multi-select",
+    "active file",
+    "same folder",
+    "extension filter",
     "productivity",
     "tree-view"
   ],
@@ -35,8 +47,7 @@
     "vscode": "^1.85.0"
   },
   "categories": [
-    "Other",
-    "Visualization"
+    "Other"
   ],
   "activationEvents": [
     "onCommand:folderFileFilter.showMatchingFiles",

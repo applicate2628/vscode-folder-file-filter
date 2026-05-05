@@ -1,10 +1,18 @@
 # Folder File Filter
 
-Find matching Markdown, config, test, log, or asset files inside a selected Explorer folder.
+Filter folder files by glob mask, file extension, or active file context inside VS Code Explorer.
 
 [GitHub repository](https://github.com/applicate2628/vscode-folder-file-filter) | [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=applicate2628.vscode-folder-file-filter)
 
-![Folder File Filter showing matching TypeScript files from a selected folder](media/folder-file-filter-preview.png)
+## Why Use It
+
+- Filter one folder by mask or extension without running a full workspace search.
+- Browse matching neighbors directly in Explorer while keeping file opening predictable.
+- Use the active file context to jump between related docs, configs, tests, logs, and assets.
+
+![Folder File Filter demo in VS Code highlighting the Explorer results view with matching CSV files](media/folder-file-filter-demo.gif)
+
+![Folder File Filter preview in VS Code showing matching CSV files from a selected folder](media/folder-file-filter-preview.png)
 
 ## Features
 
@@ -19,6 +27,14 @@ Find matching Markdown, config, test, log, or asset files inside a selected Expl
 - Can follow the active file tab and update the filter when a file with another extension is opened.
 - Supports refresh and clear actions from the `Folder File Filter` view title.
 - Can open the highlighted result while moving through the results list.
+
+## Common Use Cases
+
+- Filter docs such as `**/*.md`, `docs/**/*.md`, or `README*.md`.
+- Filter configs such as `**/*.json`, `**/*.yaml`, `**/*.toml`, or `*.config.*`.
+- Filter tests such as `**/*.test.ts`, `**/*.spec.js`, or `tests/**/*.py`.
+- Filter logs, reports, screenshots, and generated assets without leaving Explorer.
+- Right-click one or more files to infer a mask from their extensions and browse matching neighbors.
 
 ## Use
 

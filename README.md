@@ -1,10 +1,18 @@
 # Folder File Filter
 
-Standalone VS Code extension for finding matching documents, configs, tests, logs, and assets inside a selected Explorer folder.
+VS Code extension for filtering folder files by glob mask, file extension, or active file context inside VS Code Explorer.
 
 [Install from VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=applicate2628.vscode-folder-file-filter) | [GitHub repository](https://github.com/applicate2628/vscode-folder-file-filter)
 
-![Folder File Filter showing matching TypeScript files from a selected folder](media/folder-file-filter-preview.png)
+## Why Use It
+
+- Filter one folder by mask or extension without running a full workspace search.
+- Browse matching neighbors directly in Explorer while keeping file opening predictable.
+- Use the active file context to jump between related docs, configs, tests, logs, and assets.
+
+![Folder File Filter demo in VS Code highlighting the Explorer results view with matching CSV files](media/folder-file-filter-demo.gif)
+
+![Folder File Filter preview in VS Code showing matching CSV files from a selected folder](media/folder-file-filter-preview.png)
 
 ## Scope
 
@@ -18,6 +26,14 @@ Standalone VS Code extension for finding matching documents, configs, tests, log
 - Supports native Ctrl/Shift multi-selection and result context-menu actions for open, open to side, reveal in File Explorer, and copy path.
 - Can follow the active file tab and update the filter when a file with another extension is opened.
 - Supports refresh and clear actions from the `Folder File Filter` view title.
+
+## Common Use Cases
+
+- Filter docs such as `**/*.md`, `docs/**/*.md`, or `README*.md`.
+- Filter configs such as `**/*.json`, `**/*.yaml`, `**/*.toml`, or `*.config.*`.
+- Filter tests such as `**/*.test.ts`, `**/*.spec.js`, or `tests/**/*.py`.
+- Filter logs, reports, screenshots, and generated assets without leaving Explorer.
+- Right-click one or more files to infer a mask from their extensions and browse matching neighbors.
 
 ## Build
 
@@ -48,7 +64,7 @@ Both scripts bump the package patch version once for the batch, update the local
 ## Install Local VSIX
 
 ```powershell
-code --install-extension .\vscode-folder-file-filter-0.0.15.vsix
+code --install-extension .\vscode-folder-file-filter-0.0.16.vsix
 ```
 
 ## Use
