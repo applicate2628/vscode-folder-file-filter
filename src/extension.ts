@@ -1,32 +1,60 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import {
+  inferFolderExtensionMasks,
   inferMaskFromFileNames,
   inferMaskFromFileName,
   normalizeAutoFilterFromActiveFile,
   normalizeAutoFilterFilesFromSelectedFile,
+  normalizeMaskList,
   normalizeMask,
   normalizeMaxResults,
   normalizeOpenOnSelection,
   normalizeRestoreFocusDelayMs,
   pickSelectionKeyToOpen,
+  rememberRecentMask as updatedRecentMasks,
   sortByRelativePath
 } from "./filtering";
 
 const VIEW_ID = "folderFileFilter.results";
 const DEFAULT_MASK = "**/*";
+const DEFAULT_MASK_PRESETS = [
+  "**/*",
+  "*.*",
+  "**/*.*",
+  "**/README*",
+  "**/test*",
+  "**/*test*",
+  "**/*.test.*",
+  "**/*.spec.*",
+  "**/__tests__/**",
+  "**/docs/**",
+  "**/src/**",
+  "**/*-backup*",
+  "**/*_backup*"
+];
 const DEFAULT_MAX_RESULTS = 500;
 const DEFAULT_OPEN_ON_SELECTION = false;
 const DEFAULT_AUTO_FILTER_FILES_FROM_SELECTED_FILE = true;
 const DEFAULT_AUTO_FILTER_FROM_ACTIVE_FILE = true;
 const DEFAULT_RESTORE_FOCUS_AFTER_OPEN_DELAY_MS = 150;
+const FOLDER_EXTENSION_MASK_LIMIT = 24;
+const RECENT_MASKS_KEY = "folderFileFilter.recentMasks";
+const RECENT_MASK_LIMIT = 12;
+const CLIPBOARD_PROBE_TEXT = "__folder_file_filter_clipboard_probe__";
 const VIEW_FOCUS_COMMAND = `${VIEW_ID}.focus`;
 const LIST_FOCUS_DOWN_COMMAND = "list.focusDown";
 const LIST_FOCUS_UP_COMMAND = "list.focusUp";
 const LIST_SELECT_COMMAND = "list.select";
 
-type FolderFileFilterNode = FileNode | MessageNode;
+type FolderFileFilterNode = FilterNode | FileNode | MessageNode;
 type FilterOrigin = "manual" | "file";
+
+interface FilterNode {
+  kind: "filter";
+  label: string;
+  description?: string;
+}
 
 interface FileNode {
   kind: "file";
@@ -40,8 +68,12 @@ interface MessageNode {
   description?: string;
 }
 
+interface MaskQuickPickItem extends vscode.QuickPickItem {
+  mask?: string;
+}
+
 export function activate(context: vscode.ExtensionContext): void {
-  const provider = new FolderFileFilterProvider();
+  const provider = new FolderFileFilterProvider(context.globalState);
   const treeView = vscode.window.createTreeView(VIEW_ID, {
     treeDataProvider: provider,
     canSelectMany: true,
@@ -63,6 +95,12 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand("folderFileFilter.refresh", async () => {
       await provider.refresh();
+    }),
+    vscode.commands.registerCommand("folderFileFilter.changeMask", async () => {
+      await provider.changeMask();
+    }),
+    vscode.commands.registerCommand("folderFileFilter.changeSourceFolder", async () => {
+      await provider.changeSourceFolder();
     }),
     vscode.commands.registerCommand("folderFileFilter.clear", () => {
       provider.clear();
@@ -127,9 +165,12 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
   private sourceFolder: vscode.Uri | undefined;
   private mask: string | undefined;
   private filterOrigin: FilterOrigin | undefined;
+  private resultCount: number | undefined;
   private lastSelectionKeys = new Set<string>();
 
   public readonly onDidChangeTreeData = this.changed.event;
+
+  public constructor(private readonly state: vscode.Memento) {}
 
   public bindTreeView(treeView: vscode.TreeView<FolderFileFilterNode>): void {
     this.treeView = treeView;
@@ -150,6 +191,19 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
       item.description = node.description;
       item.contextValue = "folderFileFilter.message";
       item.iconPath = new vscode.ThemeIcon("info");
+      return item;
+    }
+
+    if (node.kind === "filter") {
+      const item = new vscode.TreeItem(node.label, vscode.TreeItemCollapsibleState.None);
+      item.description = node.description;
+      item.contextValue = "folderFileFilter.filter";
+      item.iconPath = new vscode.ThemeIcon("filter");
+      item.tooltip = "Click to change the active Folder File Filter mask.";
+      item.command = {
+        command: "folderFileFilter.changeMask",
+        title: "Change Mask"
+      };
       return item;
     }
 
@@ -264,22 +318,20 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
   }
 
   public async showMatchingFiles(uri?: vscode.Uri): Promise<void> {
-    if (!uri) {
-      vscode.window.showWarningMessage("Folder File Filter: right-click a folder in Explorer first.");
+    const sourceFolder = uri
+      ? await this.sourceFolderFromUri(uri)
+      : (await this.activeExplorerSourceFolder()) ?? (await this.activeSourceFolder());
+    if (!sourceFolder) {
+      vscode.window.showWarningMessage("Folder File Filter: select a folder or file in Explorer first.");
       return;
     }
 
-    if (!(await isDirectory(uri))) {
-      vscode.window.showWarningMessage("Folder File Filter: selected Explorer item is not a folder.");
-      return;
-    }
-
-    const mask = await promptForMask(this.mask ?? configuredDefaultMask());
+    const mask = await this.promptForMask(this.mask ?? configuredDefaultMask(), sourceFolder);
     if (!mask) {
       return;
     }
 
-    await this.search(uri, mask, "manual");
+    await this.search(sourceFolder, mask, "manual");
   }
 
   public async showMatchingFilesFromFile(uri?: vscode.Uri, selectedUris?: readonly vscode.Uri[]): Promise<void> {
@@ -311,7 +363,7 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
     const inferredMask = inferMaskFromFileNames(fileUris.map(fileNameFromUri));
     const mask = configuredAutoFilterFilesFromSelectedFile()
       ? inferredMask
-      : await promptForMask(inferredMask);
+      : await this.promptForMask(inferredMask, sourceFolder);
     if (!mask) {
       return;
     }
@@ -346,10 +398,41 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
     await this.search(this.sourceFolder, this.mask, this.filterOrigin ?? "manual");
   }
 
+  public async changeMask(): Promise<void> {
+    const sourceFolder = (await this.activeExplorerSourceFolder()) ?? (await this.activeSourceFolder()) ?? this.sourceFolder;
+    if (!sourceFolder) {
+      vscode.window.showWarningMessage("Folder File Filter: select a folder or file in Explorer first.");
+      return;
+    }
+
+    this.sourceFolder = sourceFolder;
+    const mask = await this.promptForMask(this.mask ?? configuredDefaultMask(), this.sourceFolder);
+    if (!mask) {
+      return;
+    }
+
+    await this.search(this.sourceFolder, mask, "manual");
+  }
+
+  public async changeSourceFolder(): Promise<void> {
+    const sourceFolder = await this.activeExplorerSourceFolder();
+    if (!sourceFolder) {
+      vscode.window.showWarningMessage("Folder File Filter: select a folder or file in Explorer first.");
+      return;
+    }
+
+    const mask = await this.promptForMask(this.mask ?? configuredDefaultMask(), sourceFolder);
+    if (!mask) {
+      return;
+    }
+
+    await this.search(sourceFolder, mask, "manual");
+  }
+
   public clear(): void {
-    this.sourceFolder = undefined;
     this.mask = undefined;
     this.filterOrigin = undefined;
+    this.resultCount = undefined;
     this.lastSelectionKeys.clear();
     this.nodes = [
       {
@@ -366,14 +449,15 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
     this.sourceFolder = sourceFolder;
     this.mask = mask;
     this.filterOrigin = origin;
+    this.resultCount = undefined;
     this.lastSelectionKeys.clear();
-    this.nodes = [
+    this.nodes = this.withFilterNode([
       {
         kind: "message",
         label: "Searching...",
         description: `${mask} in ${folderLabel(sourceFolder)}`
       }
-    ];
+    ]);
     this.updateTreeMessage();
     this.changed.fire(undefined);
 
@@ -389,7 +473,8 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
         }))
       );
 
-      this.nodes = files.length > 0
+      this.resultCount = files.length;
+      this.nodes = this.withFilterNode(files.length > 0
         ? files
         : [
             {
@@ -397,17 +482,18 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
               label: "No matching files",
               description: `${mask} in ${folderLabel(sourceFolder)}`
             }
-          ];
-      this.updateTreeMessage(files.length);
+          ]);
+      this.updateTreeMessage();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.nodes = [
+      this.resultCount = undefined;
+      this.nodes = this.withFilterNode([
         {
           kind: "message",
           label: "Search failed",
           description: message
         }
-      ];
+      ]);
       this.updateTreeMessage();
       vscode.window.showErrorMessage(`Folder File Filter: ${message}`);
     } finally {
@@ -423,18 +509,98 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
     await this.search(sourceFolder, mask, origin);
   }
 
-  private updateTreeMessage(resultCount?: number): void {
+  private async promptForMask(defaultMask: string, sourceFolder?: vscode.Uri): Promise<string | undefined> {
+    const folderExtensionMasks = sourceFolder ? await this.folderExtensionMasksFor(sourceFolder) : [];
+    const mask = await promptForMask(defaultMask, this.recentMasks(), configuredMaskPresets(), folderExtensionMasks);
+    if (mask) {
+      await this.state.update(RECENT_MASKS_KEY, updatedRecentMasks(this.recentMasks(), mask, RECENT_MASK_LIMIT));
+    }
+
+    return mask;
+  }
+
+  private async activeSourceFolder(): Promise<vscode.Uri | undefined> {
+    const uri = activeTabUri() ?? vscode.window.activeTextEditor?.document.uri;
+    if (!uri || uri.scheme !== "file" || await isDirectory(uri)) {
+      return undefined;
+    }
+
+    return this.sourceFolderFromUri(uri);
+  }
+
+  private async activeExplorerSourceFolder(): Promise<vscode.Uri | undefined> {
+    let previousClipboard: string | undefined;
+
+    try {
+      previousClipboard = await vscode.env.clipboard.readText();
+      await vscode.env.clipboard.writeText(CLIPBOARD_PROBE_TEXT);
+      await vscode.commands.executeCommand("workbench.files.action.focusFilesExplorer");
+      await vscode.commands.executeCommand("copyFilePath");
+      const copiedText = await vscode.env.clipboard.readText();
+      if (copiedText === CLIPBOARD_PROBE_TEXT) {
+        return undefined;
+      }
+
+      const copiedPath = firstCopiedPath(copiedText);
+      if (!copiedPath || !path.isAbsolute(copiedPath)) {
+        return undefined;
+      }
+
+      return this.sourceFolderFromUri(vscode.Uri.file(copiedPath));
+    } catch {
+      return undefined;
+    } finally {
+      if (previousClipboard !== undefined) {
+        await vscode.env.clipboard.writeText(previousClipboard).then(undefined, () => undefined);
+      }
+      executeViewFocus();
+    }
+  }
+
+  private async sourceFolderFromUri(uri: vscode.Uri): Promise<vscode.Uri | undefined> {
+    if (uri.scheme !== "file") {
+      return undefined;
+    }
+
+    return await isDirectory(uri) ? uri : parentFolderUri(uri);
+  }
+
+  private async folderExtensionMasksFor(sourceFolder: vscode.Uri): Promise<string[]> {
+    try {
+      const entries = await vscode.workspace.fs.readDirectory(sourceFolder);
+      const fileNames = entries
+        .filter(([, type]) => (type & vscode.FileType.File) !== 0)
+        .map(([name]) => name);
+      return inferFolderExtensionMasks(fileNames, FOLDER_EXTENSION_MASK_LIMIT);
+    } catch {
+      return [];
+    }
+  }
+
+  private recentMasks(): string[] {
+    return normalizeMaskList(this.state.get<unknown>(RECENT_MASKS_KEY), []);
+  }
+
+  private withFilterNode(nodes: readonly FolderFileFilterNode[]): FolderFileFilterNode[] {
+    if (!this.sourceFolder || !this.mask) {
+      return [...nodes];
+    }
+
+    const countText = this.resultCount === undefined ? "" : ` (${this.resultCount})`;
+    const filterNode: FilterNode = {
+      kind: "filter",
+      label: `Mask: ${this.mask}${countText}`,
+      description: folderLabel(this.sourceFolder)
+    };
+    return [filterNode, ...nodes];
+  }
+
+  private updateTreeMessage(): void {
     if (!this.treeView) {
       return;
     }
 
-    if (!this.sourceFolder || !this.mask) {
-      this.treeView.message = undefined;
-      return;
-    }
-
-    const countText = resultCount === undefined ? "" : ` (${resultCount})`;
-    this.treeView.message = `${this.mask} in ${folderLabel(this.sourceFolder)}${countText}`;
+    this.treeView.message = undefined;
   }
 
   private isCurrentFileFilter(sourceFolder: vscode.Uri, inferredMask: string): boolean {
@@ -502,20 +668,136 @@ async function isDirectory(uri: vscode.Uri): Promise<boolean> {
   }
 }
 
-async function promptForMask(defaultMask: string): Promise<string | undefined> {
-  const value = await vscode.window.showInputBox({
-    title: "Folder File Filter",
-    prompt: "Glob mask to show from the selected source folder",
-    value: defaultMask,
-    validateInput: (input) => normalizeMask(input) ? undefined : "Mask is required."
-  });
+async function promptForMask(
+  defaultMask: string,
+  recentMasks: readonly string[],
+  presetMasks: readonly string[],
+  folderExtensionMasks: readonly string[]
+): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    const quickPick = vscode.window.createQuickPick<MaskQuickPickItem>();
+    const disposables: vscode.Disposable[] = [];
+    let settled = false;
 
-  return value === undefined ? undefined : normalizeMask(value);
+    const finish = (value: string | undefined): void => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      for (const disposable of disposables) {
+        disposable.dispose();
+      }
+      quickPick.dispose();
+      resolve(value);
+    };
+
+    const refreshItems = (): void => {
+      const items = createMaskQuickPickItems(quickPick.value, defaultMask, recentMasks, presetMasks, folderExtensionMasks);
+      quickPick.items = items;
+      const activeItem = items.find((item) => item.mask);
+      quickPick.activeItems = activeItem ? [activeItem] : [];
+    };
+
+    quickPick.title = "Folder File Filter";
+    quickPick.placeholder = "Type a glob mask or pick a preset";
+    quickPick.matchOnDescription = true;
+    quickPick.matchOnDetail = true;
+    disposables.push(
+      quickPick.onDidChangeValue(refreshItems),
+      quickPick.onDidAccept(() => {
+        const selected = quickPick.selectedItems[0];
+        const mask = normalizeMask(selected?.mask ?? quickPick.value);
+        if (!mask) {
+          vscode.window.showWarningMessage("Folder File Filter: mask is required.");
+          return;
+        }
+
+        finish(mask);
+      }),
+      quickPick.onDidHide(() => {
+        finish(undefined);
+      })
+    );
+
+    refreshItems();
+    quickPick.show();
+  });
+}
+
+function createMaskQuickPickItems(
+  inputValue: string,
+  defaultMask: string,
+  recentMasks: readonly string[],
+  presetMasks: readonly string[],
+  folderExtensionMasks: readonly string[]
+): MaskQuickPickItem[] {
+  const items: MaskQuickPickItem[] = [];
+  const added = new Set<string>();
+  const typedMask = normalizeMask(inputValue);
+
+  if (typedMask) {
+    addMaskItem(items, added, typedMask, "Use typed mask", true);
+  }
+
+  addMaskSection(items, added, "Existing in this folder", folderExtensionMasks, "Folder extension");
+  addMaskSection(items, added, "Current", [defaultMask], "Current mask");
+  addMaskSection(items, added, "Recent", recentMasks, "Recent mask");
+  addMaskSection(items, added, "Generic patterns", presetMasks, "Pattern");
+
+  return items;
+}
+
+function addMaskSection(
+  items: MaskQuickPickItem[],
+  added: Set<string>,
+  label: string,
+  masks: readonly string[],
+  description: string
+): void {
+  const sectionItems: MaskQuickPickItem[] = [];
+
+  for (const mask of masks) {
+    addMaskItem(sectionItems, added, mask, description);
+  }
+
+  if (sectionItems.length === 0) {
+    return;
+  }
+
+  items.push({ label, kind: vscode.QuickPickItemKind.Separator });
+  items.push(...sectionItems);
+}
+
+function addMaskItem(
+  items: MaskQuickPickItem[],
+  added: Set<string>,
+  mask: string,
+  description: string,
+  alwaysShow = false
+): void {
+  const normalized = normalizeMask(mask);
+  if (!normalized || added.has(normalized)) {
+    return;
+  }
+
+  added.add(normalized);
+  items.push({
+    label: normalized,
+    description,
+    mask: normalized,
+    alwaysShow
+  });
 }
 
 function configuredDefaultMask(): string {
   const configured = vscode.workspace.getConfiguration("folderFileFilter").get<string>("defaultMask");
   return normalizeMask(configured ?? DEFAULT_MASK) ?? DEFAULT_MASK;
+}
+
+function configuredMaskPresets(): string[] {
+  const configured = vscode.workspace.getConfiguration("folderFileFilter").get<unknown>("maskPresets");
+  return normalizeMaskList(configured, DEFAULT_MASK_PRESETS);
 }
 
 function configuredMaxResults(): number {
@@ -586,6 +868,28 @@ function collectSelectedUris(primary: vscode.Uri, selectedUris?: readonly vscode
   }
 
   return uris;
+}
+
+function firstCopiedPath(value: string): string | undefined {
+  for (const line of value.split(/\r?\n/)) {
+    const candidate = stripSurroundingQuotes(line.trim());
+    if (candidate.length > 0) {
+      return candidate;
+    }
+  }
+
+  return undefined;
+}
+
+function stripSurroundingQuotes(value: string): string {
+  if (
+    (value.startsWith("\"") && value.endsWith("\""))
+    || (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1);
+  }
+
+  return value;
 }
 
 function activeTabUri(): vscode.Uri | undefined {

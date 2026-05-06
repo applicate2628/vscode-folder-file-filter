@@ -1,15 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  inferFolderExtensionMasks,
   inferMaskFromFileNames,
   inferMaskFromFileName,
   normalizeAutoFilterFromActiveFile,
   normalizeAutoFilterFilesFromSelectedFile,
+  normalizeMaskList,
   normalizeMask,
   normalizeMaxResults,
   normalizeOpenOnSelection,
   normalizeRestoreFocusDelayMs,
   pickSelectionKeyToOpen,
+  rememberRecentMask,
   sortByRelativePath
 } from "../filtering";
 
@@ -19,6 +22,34 @@ test("normalizeMask trims non-empty masks", () => {
 
 test("normalizeMask rejects empty masks", () => {
   assert.equal(normalizeMask("   "), undefined);
+});
+
+test("normalizeMaskList trims, drops invalid entries, and keeps unique masks", () => {
+  assert.deepEqual(
+    normalizeMaskList([" **/*.md ", "", 42, "**/*.json", "**/*.md"], ["**/*"]),
+    ["**/*.md", "**/*.json"]
+  );
+});
+
+test("normalizeMaskList falls back when no configured masks remain", () => {
+  assert.deepEqual(normalizeMaskList(["", "   "], ["**/*", "*.md"]), ["**/*", "*.md"]);
+  assert.deepEqual(normalizeMaskList("**/*.md", ["**/*"]), ["**/*"]);
+});
+
+test("rememberRecentMask moves masks to the front and caps history", () => {
+  assert.deepEqual(
+    rememberRecentMask(["**/*.md", "**/*.json", "**/*.log"], " **/*.json ", 3),
+    ["**/*.json", "**/*.md", "**/*.log"]
+  );
+  assert.deepEqual(
+    rememberRecentMask(["**/*.md", "**/*.json", "**/*.log"], "**/*.png", 3),
+    ["**/*.png", "**/*.md", "**/*.json"]
+  );
+});
+
+test("rememberRecentMask ignores empty masks and non-positive limits", () => {
+  assert.deepEqual(rememberRecentMask(["**/*.md"], "   ", 5), ["**/*.md"]);
+  assert.deepEqual(rememberRecentMask(["**/*.md"], "**/*.json", 0), []);
 });
 
 test("normalizeMaxResults keeps positive finite integers", () => {
@@ -75,6 +106,25 @@ test("inferMaskFromFileNames returns the single inferred mask for one extension"
 
 test("inferMaskFromFileNames falls back when the selection is empty", () => {
   assert.equal(inferMaskFromFileNames([]), "*");
+});
+
+test("inferFolderExtensionMasks ranks real folder extensions deterministically", () => {
+  assert.deepEqual(
+    inferFolderExtensionMasks([
+      "notes.son",
+      "filter.s2p",
+      "candidate.s2p",
+      "UPPER.S2P",
+      "archive.tar.gz",
+      "README",
+      ".env"
+    ], 10),
+    ["*.s2p", "*.gz", "*.son"]
+  );
+  assert.deepEqual(
+    inferFolderExtensionMasks(["a.md", "b.json", "c.md"], 1),
+    ["*.md"]
+  );
 });
 
 test("sortByRelativePath returns files ordered by relative path", () => {

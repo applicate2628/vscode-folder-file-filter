@@ -2,7 +2,7 @@
   "name": "vscode-folder-file-filter",
   "displayName": "Folder File Filter",
   "description": "Filter folder files by glob, extension, or active file context inside VS Code Explorer.",
-  "version": "0.0.18",
+  "version": "0.0.19",
   "publisher": "applicate2628",
   "license": "MPL-2.0",
   "repository": {
@@ -53,6 +53,8 @@
     "onCommand:folderFileFilter.showMatchingFiles",
     "onCommand:folderFileFilter.showMatchingFilesFromFile",
     "onCommand:folderFileFilter.refresh",
+    "onCommand:folderFileFilter.changeMask",
+    "onCommand:folderFileFilter.changeSourceFolder",
     "onCommand:folderFileFilter.clear",
     "onCommand:folderFileFilter.openSettings",
     "onCommand:folderFileFilter.openResult",
@@ -76,32 +78,56 @@
           "description": "Default glob mask shown when filtering files in a selected folder.",
           "markdownDescription": "Default glob mask shown when filtering files in a selected folder."
         },
+        "folderFileFilter.maskPresets": {
+          "type": "array",
+          "default": [
+            "**/*",
+            "*.*",
+            "**/*.*",
+            "**/README*",
+            "**/test*",
+            "**/*test*",
+            "**/*.test.*",
+            "**/*.spec.*",
+            "**/__tests__/**",
+            "**/docs/**",
+            "**/src/**",
+            "**/*-backup*",
+            "**/*_backup*"
+          ],
+          "order": 2,
+          "description": "Generic glob patterns shown after current-folder extensions and recent masks in the Folder File Filter mask picker.",
+          "markdownDescription": "Generic glob patterns shown after current-folder extensions and recent masks in the Folder File Filter mask picker.",
+          "items": {
+            "type": "string"
+          }
+        },
         "folderFileFilter.maxResults": {
           "type": "number",
           "default": 500,
           "minimum": 1,
-          "order": 2,
+          "order": 3,
           "description": "Maximum number of files returned by one folder file filter search.",
           "markdownDescription": "Maximum number of files returned by one folder file filter search."
         },
         "folderFileFilter.openOnSelection": {
           "type": "boolean",
           "default": false,
-          "order": 3,
+          "order": 4,
           "description": "Open the selected result immediately while moving through the Folder File Filter results list. Files open with their default editor in preview mode and focus stays in the results view.",
           "markdownDescription": "Open the selected result immediately while moving through the Folder File Filter results list. Files open with their default editor in preview mode and focus stays in the results view."
         },
         "folderFileFilter.autoFilterFilesFromSelectedFile": {
           "type": "boolean",
           "default": true,
-          "order": 4,
+          "order": 5,
           "description": "When running Folder File Filter from a file, immediately show files in the same folder that match the selected file extension. Disable to confirm or edit the inferred mask first.",
           "markdownDescription": "When running Folder File Filter from a file, immediately show files in the same folder that match the selected file extension. Disable to confirm or edit the inferred mask first."
         },
         "folderFileFilter.autoFilterFromActiveFile": {
           "type": "boolean",
           "default": true,
-          "order": 5,
+          "order": 6,
           "description": "Automatically update Folder File Filter when the active editor tab changes to a file. The filter uses that file's parent folder and inferred extension mask.",
           "markdownDescription": "Automatically update Folder File Filter when the active editor tab changes to a file. The filter uses that file's parent folder and inferred extension mask."
         },
@@ -109,7 +135,7 @@
           "type": "number",
           "default": 150,
           "minimum": 0,
-          "order": 6,
+          "order": 7,
           "description": "Delay before Folder File Filter restores focus again after auto-opening a result. Increase this if a custom editor takes focus after opening; set to 0 to disable delayed refocus.",
           "markdownDescription": "Delay before Folder File Filter restores focus again after auto-opening a result. Increase this if a custom editor takes focus after opening; set to `0` to disable delayed refocus."
         }
@@ -138,6 +164,16 @@
         "command": "folderFileFilter.refresh",
         "title": "Folder File Filter: Refresh",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "folderFileFilter.changeMask",
+        "title": "Folder File Filter: Change Mask",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "folderFileFilter.changeSourceFolder",
+        "title": "Folder File Filter: Change Source Folder",
+        "icon": "$(folder-opened)"
       },
       {
         "command": "folderFileFilter.clear",
@@ -218,6 +254,16 @@
       ],
       "view/title": [
         {
+          "command": "folderFileFilter.changeSourceFolder",
+          "when": "view == folderFileFilter.results",
+          "group": "navigation@0"
+        },
+        {
+          "command": "folderFileFilter.changeMask",
+          "when": "view == folderFileFilter.results",
+          "group": "navigation@1"
+        },
+        {
           "command": "folderFileFilter.refresh",
           "when": "view == folderFileFilter.results",
           "group": "navigation"
@@ -234,6 +280,11 @@
         }
       ],
       "view/item/context": [
+        {
+          "command": "folderFileFilter.changeMask",
+          "when": "view == folderFileFilter.results && viewItem == folderFileFilter.filter",
+          "group": "navigation@0"
+        },
         {
           "command": "folderFileFilter.openResult",
           "when": "view == folderFileFilter.results && viewItem == folderFileFilter.file",
