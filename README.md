@@ -59,7 +59,7 @@ For Bash environments, use the equivalent script:
 npm run release:patch:bash
 ```
 
-Both scripts bump the package patch version once for the batch, update the local VSIX filename in this README, run tests, package the extension, run `npm audit`, commit the version bump, and push the current branch to the configured `origin`. They do not hardcode the GitHub owner; forks push to their own `origin`.
+Both scripts bump the package patch version once for the batch, update the local VSIX filename in this README, finalize `CHANGELOG.md`, run tests, package the extension, run `npm audit`, commit the version bump, and push the current branch to the configured `origin`. They do not hardcode the GitHub owner; forks push to their own `origin`.
 
 ## Install Local VSIX
 
@@ -139,6 +139,7 @@ See `LICENSE` for the full MPL-2.0 text and `NOTICE` for copyright and commercia
 - `Mask picker`: the dropdown used to type or choose a glob mask.
 - `Bash`: a Unix-style command shell available on Linux, macOS, WSL, and Git Bash.
 - `Command Palette`: the VS Code command launcher opened with commands such as `Show All Commands`.
+- `CHANGELOG`: release-notes file packaged with the extension so registries can show a `Changes` or `Changelog` tab.
 - `Ctrl` and `Shift`: keyboard modifier keys used by VS Code Explorer for multi-selection.
 - `Custom editor`: a VS Code editor provided by an extension for a specific file type.
 - `MPL`: Mozilla Public License.

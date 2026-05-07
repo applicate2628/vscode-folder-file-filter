@@ -2,6 +2,11 @@
 
 All notable changes to Folder File Filter are documented here.
 
+## Unreleased
+
+- Added packaged changelog support for Open VSX and VS Code Marketplace release notes.
+- Updated patch release scripts to finalize `## Unreleased` into the released version number and include `CHANGELOG.md` in the release commit.
+
 ## 0.0.19 - 2026-05-06
 
 - Added native Ctrl/Shift multi-selection support in the Folder File Filter results view.
@@ -23,9 +28,11 @@ All notable changes to Folder File Filter are documented here.
 
 ## Terms and Abbreviations
 
-- `CHANGELOG`: release-history document surfaced by extension registries such as Open VSX.
+- `CHANGELOG`: release-history document packaged with the extension so registries can show a `Changes` or `Changelog` tab.
 - `Explorer`: the VS Code sidebar that shows workspace folders and contributed views.
 - `Glob`: a path matching pattern such as `**/*.md` or `**/*.json`.
 - `Mask picker`: the dropdown used to type or choose a glob mask.
+- `MPL`: Mozilla Public License.
 - `Open VSX`: the open extension registry used by VS Code-compatible editors.
 - `VS Code`: Visual Studio Code.
+- `VSIX`: the packaged install format for VS Code extensions.
