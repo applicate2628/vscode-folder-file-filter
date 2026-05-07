@@ -2,7 +2,7 @@
   "name": "vscode-folder-file-filter",
   "displayName": "Folder File Filter",
   "description": "Filter folder files by glob, extension, or active file context inside VS Code Explorer.",
-  "version": "0.0.19",
+  "version": "0.0.20",
   "publisher": "applicate2628",
   "license": "MPL-2.0",
   "repository": {

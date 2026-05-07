@@ -2,8 +2,7 @@
 
 All notable changes to Folder File Filter are documented here.
 
-## Unreleased
-
+## 0.0.20
 - Added packaged changelog support for Open VSX and VS Code Marketplace release notes.
 - Updated patch release scripts to finalize `## Unreleased` into the released version number and include `CHANGELOG.md` in the release commit.
 - Added saved named filters that appear in the mask picker and can be updated from the results view.

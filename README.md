@@ -72,7 +72,7 @@ Both scripts bump the package patch version once for the batch, update the local
 ## Install Local VSIX
 
 ```powershell
-code --install-extension .\vscode-folder-file-filter-0.0.19.vsix
+code --install-extension .\vscode-folder-file-filter-0.0.20.vsix
 ```
 
 ## Use
