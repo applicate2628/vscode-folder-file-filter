@@ -46,6 +46,10 @@ npm test
 npm run package
 ```
 
+## Manual QA
+
+Before a release build, use the checklist in [docs/manual-qa.md](docs/manual-qa.md) to verify Explorer context menus, source-folder selection, mask picker behavior, saved filters, sorting, grouping, live refresh, and open-on-selection navigation.
+
 ## Local Commits And Release
 
 Commit normal development changes locally without bumping the extension version. Do not push every local change.
