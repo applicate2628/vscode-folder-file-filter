@@ -21,6 +21,7 @@ VS Code extension for filtering folder files by glob mask, file extension, or ac
 - Prompts for a glob mask such as `*.md`, `**/*.test.*`, `**/docs/**`, or `**/*backup*`.
 - Shows extensions that already exist in the selected folder before recent masks and generic pattern presets.
 - Can save named filters and show them in the mask picker.
+- Can pin source folders in the results view for quick reuse inside the current workspace.
 - Shows the active mask as a clickable `Mask: ...` row at the top of the results view.
 - Shows matching files from the selected source folder as clickable tree items.
 - Can infer one filter from multiple selected files, such as `{*.json,*.md}`.
@@ -48,7 +49,7 @@ npm run package
 
 ## Manual QA
 
-Before a release build, use the checklist in [docs/manual-qa.md](docs/manual-qa.md) to verify Explorer context menus, source-folder selection, mask picker behavior, saved filters, sorting, grouping, live refresh, and open-on-selection navigation.
+Before a release build, use the checklist in [docs/manual-qa.md](docs/manual-qa.md) to verify Explorer context menus, source-folder selection, pinned folders, mask picker behavior, saved filters, sorting, grouping, live refresh, and open-on-selection navigation.
 
 ## Local Commits And Release
 
@@ -86,6 +87,7 @@ For files, right-click a file in Explorer and run `Folder File Filter`. The comm
 The `Folder File Filter` results view also supports native Ctrl/Shift multi-selection.
 To change the active mask without reopening the Explorer context menu, click the `Mask: ...` row at the top of the results view or use the `Change Mask` button in the view title. The title button uses the active Explorer file or folder first, then the active editor file's folder, then the last source folder.
 To switch folders explicitly from the results view, select a file or folder in Explorer and use `Folder File Filter: Change Source Folder` from the view title.
+Use `Pin Source Folder` to keep the active Explorer folder or current source folder in a `Pinned folders` group. When a mask is active, each pinned folder also shows its own matching child files and count for that mask. Clicking a pinned folder opens the mask picker for that folder, and stale pins can be removed from their context menu.
 Use `Save Filter` to name the current mask, `Change Sort` to sort results by path, name, or extension, and `Toggle Group By Extension` to fold results into extension groups.
 
 To open extension settings, run `Folder File Filter: Open Settings` from the Command Palette.
@@ -132,6 +134,9 @@ The mask picker shows extension masks found in the selected folder, saved named 
 Folder extension suggestions scan only the selected folder's top level and are sorted by frequency, then by extension name.
 Saved filters are stored in `folderFileFilter.savedFilters` and can be updated through the `Save Filter` view action.
 Recent masks are stored in VS Code's extension global state. Automatic active-file filters do not add masks to that history.
+Pinned folders are stored in VS Code workspace state as a workspace folder name plus a relative path. They do not store machine-specific absolute paths.
+If a multi-root workspace contains duplicate workspace folder names, pinned folders fail closed as ambiguous; rename the workspace folders before pinning them.
+Searches are limited to folders inside the current workspace. `folderFileFilter.maxResults` defaults to 500 and is capped at 5000.
 Use `folderFileFilter.sortBy` and `folderFileFilter.groupByExtension` to control result presentation without changing the active search.
 Disable `folderFileFilter.autoRefreshResults` if file-system changes should not refresh the active result list automatically.
 Increase `folderFileFilter.autoRefreshDebounceMs` if a tool writes many matching files in a short burst.
@@ -142,7 +147,7 @@ Increase `folderFileFilter.restoreFocusAfterOpenDelayMs` if a custom editor take
 
 ## Privacy And Security
 
-The extension searches local workspace files through the VS Code extension API and opens matches with VS Code's default editor selection. It does not upload files, make network requests, or collect telemetry.
+The extension searches local workspace files through the VS Code extension API and opens matches with VS Code's default editor selection. Source folders must be inside the current workspace. It does not upload files, make network requests, or collect telemetry.
 
 ## Support The Project
 
@@ -167,6 +172,7 @@ See `LICENSE` for the full MPL-2.0 text and `NOTICE` for copyright and commercia
 - `Custom editor`: a VS Code editor provided by an extension for a specific file type.
 - `MPL`: Mozilla Public License.
 - `Open VSX`: the open extension registry used by VS Code-compatible editors.
+- `Pinned folder`: a workspace-relative source folder shortcut stored in VS Code workspace state.
 - `PowerShell`: Microsoft's command shell used by the default release script on Windows.
 - `rating`: a user review or score on an extension marketplace.
 - `Saved filter`: a named glob mask stored in extension settings.

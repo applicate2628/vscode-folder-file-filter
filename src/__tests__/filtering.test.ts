@@ -10,6 +10,7 @@ import {
   normalizeAutoRefreshResults,
   normalizeFileSortMode,
   normalizeGroupByExtension,
+  normalizePinnedFolders,
   normalizeNamedFilters,
   normalizeMaskList,
   normalizeMask,
@@ -18,8 +19,10 @@ import {
   normalizeRestoreFocusDelayMs,
   pickSelectionKeyToOpen,
   rememberRecentMask,
+  removePinnedFolder,
   sortFiles,
-  sortByRelativePath
+  sortByRelativePath,
+  upsertPinnedFolder
 } from "../filtering";
 
 test("normalizeMask trims non-empty masks", () => {
@@ -60,6 +63,10 @@ test("rememberRecentMask ignores empty masks and non-positive limits", () => {
 
 test("normalizeMaxResults keeps positive finite integers", () => {
   assert.equal(normalizeMaxResults(25, 500), 25);
+});
+
+test("normalizeMaxResults caps large configured values", () => {
+  assert.equal(normalizeMaxResults(25000, 500, 5000), 5000);
 });
 
 test("normalizeMaxResults falls back for invalid values", () => {
@@ -129,6 +136,75 @@ test("normalizeNamedFilters trims labels and masks and drops invalid entries", (
       42
     ]),
     [{ label: "Docs", mask: "**/*.md" }]
+  );
+});
+
+test("normalizePinnedFolders keeps only workspace-relative folder identities", () => {
+  assert.deepEqual(
+    normalizePinnedFolders([
+      { workspaceFolderName: " Workspace ", relativePath: "docs\\api" },
+      { workspaceFolderName: "Workspace", relativePath: "docs/api" },
+      { workspaceFolderName: "Workspace", relativePath: "" },
+      { workspaceFolderName: "Workspace", relativePath: "." },
+      { workspaceFolderName: "Workspace", relativePath: "../outside" },
+      { workspaceFolderName: "Workspace", relativePath: "X:/absolute/docs" },
+      { workspaceFolderName: "Workspace", relativePath: "file:///x/absolute/docs" },
+      { workspaceFolderName: "", relativePath: "docs" },
+      42
+    ], 10),
+    [
+      { workspaceFolderName: "Workspace", relativePath: "docs/api" },
+      { workspaceFolderName: "Workspace", relativePath: "" }
+    ]
+  );
+});
+
+test("upsertPinnedFolder deduplicates pins and respects the limit", () => {
+  assert.deepEqual(
+    upsertPinnedFolder(
+      [
+        { workspaceFolderName: "Workspace", relativePath: "docs" },
+        { workspaceFolderName: "Workspace", relativePath: "src" }
+      ],
+      { workspaceFolderName: "Workspace", relativePath: "docs" },
+      2
+    ),
+    [
+      { workspaceFolderName: "Workspace", relativePath: "docs" },
+      { workspaceFolderName: "Workspace", relativePath: "src" }
+    ]
+  );
+
+  assert.deepEqual(
+    upsertPinnedFolder(
+      [
+        { workspaceFolderName: "Workspace", relativePath: "docs" },
+        { workspaceFolderName: "Workspace", relativePath: "src" }
+      ],
+      { workspaceFolderName: "Workspace", relativePath: "logs" },
+      2
+    ),
+    [
+      { workspaceFolderName: "Workspace", relativePath: "docs" },
+      { workspaceFolderName: "Workspace", relativePath: "src" }
+    ]
+  );
+});
+
+test("removePinnedFolder removes one workspace-relative folder identity", () => {
+  assert.deepEqual(
+    removePinnedFolder(
+      [
+        { workspaceFolderName: "Workspace", relativePath: "docs" },
+        { workspaceFolderName: "Workspace", relativePath: "src" },
+        { workspaceFolderName: "Other", relativePath: "docs" }
+      ],
+      { workspaceFolderName: "Workspace", relativePath: "docs" }
+    ),
+    [
+      { workspaceFolderName: "Workspace", relativePath: "src" },
+      { workspaceFolderName: "Other", relativePath: "docs" }
+    ]
   );
 });
 

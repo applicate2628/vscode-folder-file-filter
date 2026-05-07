@@ -17,6 +17,12 @@
     "color": "#1f6f6d",
     "theme": "dark"
   },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true,
+      "description": "Folder File Filter only reads workspace files through VS Code APIs and stores workspace-relative pinned folder metadata."
+    }
+  },
   "keywords": [
     "folder",
     "files",
@@ -56,6 +62,9 @@
     "onCommand:folderFileFilter.changeMask",
     "onCommand:folderFileFilter.changeSourceFolder",
     "onCommand:folderFileFilter.saveFilter",
+    "onCommand:folderFileFilter.pinSourceFolder",
+    "onCommand:folderFileFilter.openPinnedFolder",
+    "onCommand:folderFileFilter.unpinFolder",
     "onCommand:folderFileFilter.changeSort",
     "onCommand:folderFileFilter.toggleGroupByExtension",
     "onCommand:folderFileFilter.clear",
@@ -109,6 +118,7 @@
           "type": "number",
           "default": 500,
           "minimum": 1,
+          "maximum": 5000,
           "order": 3,
           "description": "Maximum number of files returned by one folder file filter search.",
           "markdownDescription": "Maximum number of files returned by one folder file filter search."
@@ -243,6 +253,21 @@
         "icon": "$(star-full)"
       },
       {
+        "command": "folderFileFilter.pinSourceFolder",
+        "title": "Folder File Filter: Pin Source Folder",
+        "icon": "$(pinned)"
+      },
+      {
+        "command": "folderFileFilter.openPinnedFolder",
+        "title": "Open Pinned Folder",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "folderFileFilter.unpinFolder",
+        "title": "Folder File Filter: Unpin Folder",
+        "icon": "$(pinned-dirty)"
+      },
+      {
         "command": "folderFileFilter.changeSort",
         "title": "Folder File Filter: Change Sort",
         "icon": "$(list-ordered)"
@@ -292,12 +317,12 @@
       {
         "command": "folderFileFilter.focusDownAndSelect",
         "key": "down",
-        "when": "focusedView == folderFileFilter.results && config.folderFileFilter.openOnSelection"
+        "when": "focusedView == folderFileFilter.results && config.folderFileFilter.openOnSelection && viewItem == folderFileFilter.file"
       },
       {
         "command": "folderFileFilter.focusUpAndSelect",
         "key": "up",
-        "when": "focusedView == folderFileFilter.results && config.folderFileFilter.openOnSelection"
+        "when": "focusedView == folderFileFilter.results && config.folderFileFilter.openOnSelection && viewItem == folderFileFilter.file"
       }
     ],
     "menus": {
@@ -320,6 +345,14 @@
         },
         {
           "command": "folderFileFilter.copyResultRelativePath",
+          "when": "false"
+        },
+        {
+          "command": "folderFileFilter.openPinnedFolder",
+          "when": "false"
+        },
+        {
+          "command": "folderFileFilter.unpinFolder",
           "when": "false"
         }
       ],
@@ -346,29 +379,34 @@
           "group": "navigation@2"
         },
         {
-          "command": "folderFileFilter.changeSort",
+          "command": "folderFileFilter.pinSourceFolder",
           "when": "view == folderFileFilter.results",
           "group": "navigation@3"
         },
         {
-          "command": "folderFileFilter.toggleGroupByExtension",
+          "command": "folderFileFilter.changeSort",
           "when": "view == folderFileFilter.results",
           "group": "navigation@4"
         },
         {
-          "command": "folderFileFilter.refresh",
+          "command": "folderFileFilter.toggleGroupByExtension",
           "when": "view == folderFileFilter.results",
           "group": "navigation@5"
         },
         {
-          "command": "folderFileFilter.clear",
+          "command": "folderFileFilter.refresh",
           "when": "view == folderFileFilter.results",
           "group": "navigation@6"
         },
         {
-          "command": "folderFileFilter.openSettings",
+          "command": "folderFileFilter.clear",
           "when": "view == folderFileFilter.results",
           "group": "navigation@7"
+        },
+        {
+          "command": "folderFileFilter.openSettings",
+          "when": "view == folderFileFilter.results",
+          "group": "navigation@8"
         }
       ],
       "view/item/context": [
@@ -401,6 +439,11 @@
           "command": "folderFileFilter.copyResultRelativePath",
           "when": "view == folderFileFilter.results && viewItem == folderFileFilter.file",
           "group": "3_copy@2"
+        },
+        {
+          "command": "folderFileFilter.unpinFolder",
+          "when": "view == folderFileFilter.results && (viewItem == folderFileFilter.pinnedFolder || viewItem == folderFileFilter.pinnedFolder.stale)",
+          "group": "navigation@0"
         }
       ]
     },

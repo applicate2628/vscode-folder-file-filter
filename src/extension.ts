@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import {
   FileSortMode,
   NamedFilter,
+  PinnedFolder,
   inferFolderExtensionMasks,
   inferMaskFromFileNames,
   inferMaskFromFileName,
@@ -16,11 +17,14 @@ import {
   normalizeMask,
   normalizeMaxResults,
   normalizeNamedFilters,
+  normalizePinnedFolders,
   normalizeOpenOnSelection,
   normalizeRestoreFocusDelayMs,
   pickSelectionKeyToOpen,
   rememberRecentMask as updatedRecentMasks,
+  removePinnedFolder,
   sortFiles,
+  upsertPinnedFolder,
   upsertNamedFilter
 } from "./filtering";
 
@@ -48,24 +52,41 @@ const DEFAULT_AUTO_FILTER_FROM_ACTIVE_FILE = true;
 const DEFAULT_RESTORE_FOCUS_AFTER_OPEN_DELAY_MS = 150;
 const DEFAULT_AUTO_REFRESH_RESULTS = true;
 const DEFAULT_AUTO_REFRESH_DEBOUNCE_MS = 300;
+const MAX_RESULTS_LIMIT = 5000;
 const DEFAULT_SORT_BY: FileSortMode = "path";
 const DEFAULT_GROUP_BY_EXTENSION = false;
 const FOLDER_EXTENSION_MASK_LIMIT = 24;
 const RECENT_MASKS_KEY = "folderFileFilter.recentMasks";
 const RECENT_MASK_LIMIT = 12;
+const PINNED_FOLDERS_KEY = "folderFileFilter.pinnedFolders";
+const PINNED_FOLDER_LIMIT = 20;
 const CLIPBOARD_PROBE_TEXT = "__folder_file_filter_clipboard_probe__";
 const VIEW_FOCUS_COMMAND = `${VIEW_ID}.focus`;
-const LIST_FOCUS_DOWN_COMMAND = "list.focusDown";
-const LIST_FOCUS_UP_COMMAND = "list.focusUp";
-const LIST_SELECT_COMMAND = "list.select";
+type ResultNavigationDirection = "previous" | "next";
 
-type FolderFileFilterNode = FilterNode | GroupNode | FileNode | MessageNode;
+type FolderFileFilterNode = FilterNode | PinnedFoldersGroupNode | PinnedFolderNode | GroupNode | FileNode | MessageNode;
 type FilterOrigin = "manual" | "file";
 
 interface FilterNode {
   kind: "filter";
   label: string;
   description?: string;
+}
+
+interface PinnedFoldersGroupNode {
+  kind: "pinnedGroup";
+  label: string;
+  description?: string;
+  children: PinnedFolderNode[];
+}
+
+interface PinnedFolderNode {
+  kind: "pinnedFolder";
+  pin: PinnedFolder;
+  label: string;
+  description?: string;
+  state: "ready" | "missingWorkspace" | "ambiguousWorkspace" | "missingFolder";
+  children?: FileNode[];
 }
 
 interface GroupNode {
@@ -92,7 +113,7 @@ interface MaskQuickPickItem extends vscode.QuickPickItem {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-  const provider = new FolderFileFilterProvider(context.globalState);
+  const provider = new FolderFileFilterProvider(context.globalState, context.workspaceState);
   const treeView = vscode.window.createTreeView(VIEW_ID, {
     treeDataProvider: provider,
     canSelectMany: true,
@@ -124,6 +145,15 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("folderFileFilter.saveFilter", async () => {
       await provider.saveCurrentFilter();
     }),
+    vscode.commands.registerCommand("folderFileFilter.pinSourceFolder", async () => {
+      await provider.pinSourceFolder();
+    }),
+    vscode.commands.registerCommand("folderFileFilter.openPinnedFolder", async (node?: FolderFileFilterNode) => {
+      await provider.openPinnedFolder(node);
+    }),
+    vscode.commands.registerCommand("folderFileFilter.unpinFolder", async (node?: FolderFileFilterNode) => {
+      await provider.unpinFolder(node);
+    }),
     vscode.commands.registerCommand("folderFileFilter.changeSort", async () => {
       await provider.changeSort();
     }),
@@ -152,10 +182,10 @@ export function activate(context: vscode.ExtensionContext): void {
       await provider.copyContextFileRelativePaths(node);
     }),
     vscode.commands.registerCommand("folderFileFilter.focusDownAndSelect", async () => {
-      await provider.focusAndSelect(LIST_FOCUS_DOWN_COMMAND);
+      await provider.focusAdjacentFile("next");
     }),
     vscode.commands.registerCommand("folderFileFilter.focusUpAndSelect", async () => {
-      await provider.focusAndSelect(LIST_FOCUS_UP_COMMAND);
+      await provider.focusAdjacentFile("previous");
     }),
     vscode.window.tabGroups.onDidChangeTabs(async (event) => {
       if (event.opened.some((tab) => tab.isActive) || event.changed.some((tab) => tab.isActive)) {
@@ -199,6 +229,9 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
   private fileWatcher: vscode.FileSystemWatcher | undefined;
   private autoRefreshTimer: ReturnType<typeof setTimeout> | undefined;
   private files: FileNode[] = [];
+  private pinnedResultFiles = new Map<string, FileNode[]>();
+  private pinnedResultMask: string | undefined;
+  private pinnedResultRefreshVersion = 0;
   private nodes: FolderFileFilterNode[] = [
     {
       kind: "message",
@@ -212,14 +245,19 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
   private filterOrigin: FilterOrigin | undefined;
   private resultCount: number | undefined;
   private lastSelectionKeys = new Set<string>();
+  private missingPinnedFolderKeys = new Set<string>();
+  private pinnedFolderProbeVersion = 0;
 
   public readonly onDidChangeTreeData = this.changed.event;
 
-  public constructor(private readonly state: vscode.Memento) {}
+  public constructor(
+    private readonly globalState: vscode.Memento,
+    private readonly workspaceState: vscode.Memento
+  ) {}
 
   public bindTreeView(treeView: vscode.TreeView<FolderFileFilterNode>): void {
     this.treeView = treeView;
-    this.updateTreeMessage();
+    this.rebuildCurrentNodes({ fire: false });
   }
 
   public dispose(): void {
@@ -254,6 +292,37 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
       return item;
     }
 
+    if (node.kind === "pinnedGroup") {
+      const item = new vscode.TreeItem(node.label, vscode.TreeItemCollapsibleState.Expanded);
+      item.description = node.description;
+      item.contextValue = "folderFileFilter.pinnedGroup";
+      item.iconPath = new vscode.ThemeIcon("pinned");
+      return item;
+    }
+
+    if (node.kind === "pinnedFolder") {
+      const item = new vscode.TreeItem(
+        node.label,
+        node.children && node.children.length > 0
+          ? vscode.TreeItemCollapsibleState.Expanded
+          : vscode.TreeItemCollapsibleState.None
+      );
+      item.description = node.description;
+      item.contextValue = node.state === "ready"
+        ? "folderFileFilter.pinnedFolder"
+        : "folderFileFilter.pinnedFolder.stale";
+      item.iconPath = new vscode.ThemeIcon(node.state === "ready" ? "folder" : "warning");
+      item.tooltip = pinnedFolderTooltip(node);
+      if (node.state === "ready") {
+        item.command = {
+          command: "folderFileFilter.openPinnedFolder",
+          title: "Open Pinned Folder",
+          arguments: [node]
+        };
+      }
+      return item;
+    }
+
     if (node.kind === "group") {
       const item = new vscode.TreeItem(node.label, vscode.TreeItemCollapsibleState.Expanded);
       item.description = node.description;
@@ -279,7 +348,27 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
       return this.nodes;
     }
 
-    return node.kind === "group" ? node.children : [];
+    return node.kind === "group" || node.kind === "pinnedGroup" || node.kind === "pinnedFolder" ? node.children ?? [] : [];
+  }
+
+  public getParent(node: FolderFileFilterNode): FolderFileFilterNode | undefined {
+    if (isPinnedFolderNode(node)) {
+      return this.nodes.find((candidate) =>
+        candidate.kind === "pinnedGroup"
+        && candidate.children.some((child) => samePinnedFolder(child.pin, node.pin))
+      );
+    }
+
+    if (!isFileNode(node)) {
+      return undefined;
+    }
+
+    return this.nodes.find((candidate) =>
+      candidate.kind === "group"
+      && candidate.children.some((child) => sameUri(child.uri, node.uri))
+    ) ?? this.pinnedFolderNodes().find((candidate) =>
+      candidate.children?.some((child) => sameUri(child.uri, node.uri))
+    );
   }
 
   public async openContextFiles(node?: FolderFileFilterNode): Promise<void> {
@@ -368,12 +457,17 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
     }
   }
 
-  public async focusAndSelect(focusCommand: string): Promise<void> {
-    await vscode.commands.executeCommand(focusCommand);
-
-    if (configuredOpenOnSelection()) {
-      await vscode.commands.executeCommand(LIST_SELECT_COMMAND);
+  public async focusAdjacentFile(direction: ResultNavigationDirection): Promise<void> {
+    const target = this.adjacentFileForSelection(direction);
+    if (!target || !this.treeView) {
+      return;
     }
+
+    await this.treeView.reveal(target, {
+      select: true,
+      focus: true,
+      expand: true
+    });
   }
 
   public async showMatchingFiles(uri?: vscode.Uri): Promise<void> {
@@ -403,13 +497,17 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
     const fileUris: vscode.Uri[] = [];
 
     for (const target of targets) {
+      if (target.scheme !== "file" || !vscode.workspace.getWorkspaceFolder(target)) {
+        continue;
+      }
+
       if (!(await isDirectory(target))) {
         fileUris.push(target);
       }
     }
 
     if (fileUris.length === 0) {
-      if (await isDirectory(uri)) {
+      if (await this.isWorkspaceDirectory(uri)) {
         await this.showMatchingFiles(uri);
         return;
       }
@@ -418,7 +516,12 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
       return;
     }
 
-    const sourceFolder = parentFolderUri(fileUris[0]);
+    const sourceFolder = await this.sourceFolderFromUri(fileUris[0]);
+    if (!sourceFolder) {
+      vscode.window.showWarningMessage("Folder File Filter: selected file is outside the current workspace.");
+      return;
+    }
+
     const inferredMask = inferMaskFromFileNames(fileUris.map(fileNameFromUri));
     const mask = configuredAutoFilterFilesFromSelectedFile()
       ? inferredMask
@@ -435,11 +538,15 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
   }
 
   public async showMatchingFilesFromActiveFile(uri?: vscode.Uri): Promise<void> {
-    if (!configuredAutoFilterFromActiveFile() || !uri || uri.scheme !== "file" || await isDirectory(uri)) {
+    if (!configuredAutoFilterFromActiveFile() || !uri || uri.scheme !== "file" || !vscode.workspace.getWorkspaceFolder(uri) || await this.isWorkspaceDirectory(uri)) {
       return;
     }
 
-    const sourceFolder = parentFolderUri(uri);
+    const sourceFolder = await this.sourceFolderFromUri(uri);
+    if (!sourceFolder) {
+      return;
+    }
+
     const inferredMask = inferMaskFromFileName(fileNameFromUri(uri));
     if (this.isCurrentFileFilter(sourceFolder, inferredMask)) {
       return;
@@ -509,6 +616,84 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
     vscode.window.showInformationMessage(`Folder File Filter: saved filter '${normalizedLabel}'.`);
   }
 
+  public async pinSourceFolder(): Promise<void> {
+    const sourceFolder = (await this.activeExplorerSourceFolder()) ?? (await this.activeSourceFolder()) ?? this.sourceFolder;
+    if (!sourceFolder) {
+      vscode.window.showWarningMessage("Folder File Filter: select a workspace folder or file in Explorer first.");
+      return;
+    }
+
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(sourceFolder);
+    if (workspaceFolder && workspaceFolderNameIsAmbiguous(workspaceFolder.name)) {
+      vscode.window.showWarningMessage("Folder File Filter: cannot pin folders while the workspace contains duplicate folder names.");
+      return;
+    }
+
+    const pin = this.pinForSourceFolder(sourceFolder);
+    if (!pin) {
+      vscode.window.showWarningMessage("Folder File Filter: only folders inside the current workspace can be pinned.");
+      return;
+    }
+
+    const current = this.pinnedFolders();
+    const next = upsertPinnedFolder(current, pin, PINNED_FOLDER_LIMIT);
+    if (next.length === current.length && !current.some((item) => samePinnedFolder(item, pin))) {
+      vscode.window.showWarningMessage(`Folder File Filter: pinned folder limit is ${PINNED_FOLDER_LIMIT}.`);
+      return;
+    }
+
+    await this.workspaceState.update(PINNED_FOLDERS_KEY, next);
+    this.missingPinnedFolderKeys.delete(pinnedFolderKey(pin));
+    if (this.mask) {
+      await this.refreshPinnedFolderResults(this.mask);
+    }
+    this.rebuildCurrentNodes();
+  }
+
+  public async openPinnedFolder(node?: FolderFileFilterNode): Promise<void> {
+    const pin = this.storedPinnedFolderFromCommandNode(node);
+    if (!pin) {
+      vscode.window.showInformationMessage("Folder File Filter: no pinned folder selected.");
+      return;
+    }
+
+    const resolution = this.resolvePinnedFolder(pin);
+    if (resolution.state !== "ready" || !resolution.sourceFolder) {
+      vscode.window.showWarningMessage("Folder File Filter: pinned folder is not available in the current workspace.");
+      this.rebuildCurrentNodes();
+      return;
+    }
+
+    const sourceFolder = resolution.sourceFolder;
+    if (!await isDirectory(sourceFolder)) {
+      this.missingPinnedFolderKeys.add(pinnedFolderKey(pin));
+      vscode.window.showWarningMessage("Folder File Filter: pinned folder is no longer available. Unpin it or restore the folder.");
+      this.rebuildCurrentNodes();
+      return;
+    }
+
+    this.missingPinnedFolderKeys.delete(pinnedFolderKey(pin));
+    const mask = await this.promptForMask(this.mask ?? configuredDefaultMask(), sourceFolder);
+    if (!mask) {
+      return;
+    }
+
+    await this.search(sourceFolder, mask, "manual");
+  }
+
+  public async unpinFolder(node?: FolderFileFilterNode): Promise<void> {
+    const pin = this.storedPinnedFolderFromCommandNode(node);
+    if (!pin) {
+      vscode.window.showInformationMessage("Folder File Filter: no pinned folder selected.");
+      return;
+    }
+
+    const next = removePinnedFolder(this.pinnedFolders(), pin);
+    await this.workspaceState.update(PINNED_FOLDERS_KEY, next);
+    this.pinnedResultFiles.delete(pinnedFolderKey(pin));
+    this.rebuildCurrentNodes();
+  }
+
   public async changeSort(): Promise<void> {
     const options: Array<vscode.QuickPickItem & { sortBy: FileSortMode }> = [
       { label: "Path", description: "Sort by relative path", sortBy: "path" },
@@ -537,13 +722,13 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
   }
 
   public applyPresentationSettings(): void {
-    this.rebuildResultNodes();
+    this.rebuildCurrentNodes();
   }
 
   public updateAutoRefreshWatcher(): void {
     this.disposeAutoRefreshWatcher();
 
-    if (!configuredAutoRefreshResults() || !this.sourceFolder || !this.mask) {
+    if (!configuredAutoRefreshResults() || !this.sourceFolder || !this.mask || !workspaceFolderForSourceFolder(this.sourceFolder)) {
       return;
     }
 
@@ -559,16 +744,18 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
     this.filterOrigin = undefined;
     this.resultCount = undefined;
     this.files = [];
+    this.pinnedResultMask = undefined;
+    this.pinnedResultFiles.clear();
     this.lastSelectionKeys.clear();
     this.disposeAutoRefreshWatcher();
     this.clearAutoRefreshTimer();
-    this.nodes = [
+    this.nodes = this.withPinnedFolderNodes([
       {
         kind: "message",
         label: "No filter active",
         description: "Right-click a folder and choose Folder File Filter: Show Matching Files."
       }
-    ];
+    ]);
     this.updateTreeMessage();
     this.changed.fire(undefined);
   }
@@ -579,13 +766,18 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
     origin: FilterOrigin,
     options: { quiet?: boolean } = {}
   ): Promise<void> {
+    if (!workspaceFolderForSourceFolder(sourceFolder)) {
+      vscode.window.showWarningMessage("Folder File Filter: source folder must be inside the current workspace.");
+      return;
+    }
+
     this.sourceFolder = sourceFolder;
     this.mask = mask;
     this.filterOrigin = origin;
     this.resultCount = undefined;
     if (!options.quiet) {
       this.lastSelectionKeys.clear();
-      this.nodes = this.withFilterNode([
+      this.nodes = this.withRootNodes([
         {
           kind: "message",
           label: "Searching...",
@@ -608,12 +800,15 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
 
       this.resultCount = files.length;
       this.files = files;
+      await this.refreshPinnedFolderResults(mask);
       this.rebuildResultNodes({ fire: false });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.resultCount = undefined;
       this.files = [];
-      this.nodes = this.withFilterNode([
+      this.pinnedResultMask = undefined;
+      this.pinnedResultFiles.clear();
+      this.nodes = this.withRootNodes([
         {
           kind: "message",
           label: "Search failed",
@@ -636,6 +831,45 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
     await this.search(sourceFolder, mask, origin);
   }
 
+  private async refreshPinnedFolderResults(mask: string): Promise<void> {
+    const version = ++this.pinnedResultRefreshVersion;
+    const nextResults = new Map<string, FileNode[]>();
+    const maxResults = configuredMaxResults();
+
+    for (const pin of this.pinnedFolders()) {
+      const key = pinnedFolderKey(pin);
+      const resolution = this.resolvePinnedFolder(pin);
+      if (resolution.state !== "ready" || !resolution.sourceFolder) {
+        continue;
+      }
+      const sourceFolder = resolution.sourceFolder;
+
+      if (!await isDirectory(sourceFolder)) {
+        this.missingPinnedFolderKeys.add(key);
+        continue;
+      }
+
+      const matches = await vscode.workspace.findFiles(
+        new vscode.RelativePattern(sourceFolder, mask),
+        undefined,
+        maxResults
+      );
+      nextResults.set(key, matches.map((match): FileNode => ({
+        kind: "file",
+        uri: match,
+        relativePath: relativePathFrom(sourceFolder, match)
+      })));
+      this.missingPinnedFolderKeys.delete(key);
+    }
+
+    if (version !== this.pinnedResultRefreshVersion) {
+      return;
+    }
+
+    this.pinnedResultMask = mask;
+    this.pinnedResultFiles = nextResults;
+  }
+
   private async promptForMask(defaultMask: string, sourceFolder?: vscode.Uri): Promise<string | undefined> {
     const folderExtensionMasks = sourceFolder ? await this.folderExtensionMasksFor(sourceFolder) : [];
     const mask = await promptForMask(
@@ -646,7 +880,7 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
       configuredSavedFilters()
     );
     if (mask) {
-      await this.state.update(RECENT_MASKS_KEY, updatedRecentMasks(this.recentMasks(), mask, RECENT_MASK_LIMIT));
+      await this.globalState.update(RECENT_MASKS_KEY, updatedRecentMasks(this.recentMasks(), mask, RECENT_MASK_LIMIT));
     }
 
     return mask;
@@ -654,7 +888,7 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
 
   private async activeSourceFolder(): Promise<vscode.Uri | undefined> {
     const uri = activeTabUri() ?? vscode.window.activeTextEditor?.document.uri;
-    if (!uri || uri.scheme !== "file" || await isDirectory(uri)) {
+    if (!uri || uri.scheme !== "file" || !vscode.workspace.getWorkspaceFolder(uri) || await this.isWorkspaceDirectory(uri)) {
       return undefined;
     }
 
@@ -691,14 +925,27 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
   }
 
   private async sourceFolderFromUri(uri: vscode.Uri): Promise<vscode.Uri | undefined> {
-    if (uri.scheme !== "file") {
+    if (uri.scheme !== "file" || !vscode.workspace.getWorkspaceFolder(uri)) {
       return undefined;
     }
 
-    return await isDirectory(uri) ? uri : parentFolderUri(uri);
+    const sourceFolder = await this.isWorkspaceDirectory(uri) ? uri : parentFolderUri(uri);
+    return workspaceFolderForSourceFolder(sourceFolder) ? sourceFolder : undefined;
+  }
+
+  private async isWorkspaceDirectory(uri: vscode.Uri): Promise<boolean> {
+    if (uri.scheme !== "file" || !vscode.workspace.getWorkspaceFolder(uri)) {
+      return false;
+    }
+
+    return isDirectory(uri);
   }
 
   private async folderExtensionMasksFor(sourceFolder: vscode.Uri): Promise<string[]> {
+    if (!workspaceFolderForSourceFolder(sourceFolder)) {
+      return [];
+    }
+
     try {
       const entries = await vscode.workspace.fs.readDirectory(sourceFolder);
       const fileNames = entries
@@ -710,8 +957,82 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
     }
   }
 
+  private pinForSourceFolder(sourceFolder: vscode.Uri): PinnedFolder | undefined {
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(sourceFolder);
+    if (!workspaceFolder) {
+      return undefined;
+    }
+
+    const workspaceRelativePath = workspaceRelativeFolderPath(workspaceFolder.uri, sourceFolder);
+    if (workspaceRelativePath === undefined) {
+      return undefined;
+    }
+
+    return { workspaceFolderName: workspaceFolder.name, relativePath: workspaceRelativePath };
+  }
+
+  private resolvePinnedFolder(pin: PinnedFolder): {
+    state: PinnedFolderNode["state"];
+    sourceFolder?: vscode.Uri;
+  } {
+    const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+    const matchingFolders = workspaceFolders.filter((folder) => folder.name === pin.workspaceFolderName);
+    if (matchingFolders.length === 0) {
+      return { state: "missingWorkspace" };
+    }
+
+    if (matchingFolders.length > 1) {
+      return { state: "ambiguousWorkspace" };
+    }
+
+    const workspaceFolder = matchingFolders[0];
+    const segments = pin.relativePath.split("/").filter((segment) => segment.length > 0);
+    const sourceFolder = segments.length === 0
+      ? workspaceFolder.uri
+      : vscode.Uri.joinPath(workspaceFolder.uri, ...segments);
+    if (workspaceRelativeFolderPath(workspaceFolder.uri, sourceFolder) === undefined) {
+      return { state: "missingWorkspace" };
+    }
+
+    return { state: "ready", sourceFolder };
+  }
+
   private recentMasks(): string[] {
-    return normalizeMaskList(this.state.get<unknown>(RECENT_MASKS_KEY), []);
+    return normalizeMaskList(this.globalState.get<unknown>(RECENT_MASKS_KEY), []);
+  }
+
+  private pinnedFolders(): PinnedFolder[] {
+    return normalizePinnedFolders(this.workspaceState.get<unknown>(PINNED_FOLDERS_KEY), PINNED_FOLDER_LIMIT);
+  }
+
+  private pinnedResultFilesFor(pin: PinnedFolder): FileNode[] {
+    if (!this.mask || this.pinnedResultMask !== this.mask) {
+      return [];
+    }
+
+    return sortFiles(this.pinnedResultFiles.get(pinnedFolderKey(pin)) ?? [], configuredSortBy());
+  }
+
+  private storedPinnedFolderFromCommandNode(node: FolderFileFilterNode | undefined): PinnedFolder | undefined {
+    if (!isPinnedFolderNode(node)) {
+      return undefined;
+    }
+
+    const [requestedPin] = normalizePinnedFolders([node.pin], 1);
+    if (!requestedPin) {
+      return undefined;
+    }
+
+    return this.pinnedFolders().find((storedPin) => samePinnedFolder(storedPin, requestedPin));
+  }
+
+  private withRootNodes(nodes: readonly FolderFileFilterNode[]): FolderFileFilterNode[] {
+    return this.withPinnedFolderNodes(this.withFilterNode(nodes));
+  }
+
+  private withPinnedFolderNodes(nodes: readonly FolderFileFilterNode[]): FolderFileFilterNode[] {
+    const pinnedGroup = this.pinnedFoldersGroupNode();
+    return pinnedGroup ? [pinnedGroup, ...nodes] : [...nodes];
   }
 
   private withFilterNode(nodes: readonly FolderFileFilterNode[]): FolderFileFilterNode[] {
@@ -728,7 +1049,83 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
     return [filterNode, ...nodes];
   }
 
-  private rebuildResultNodes(options: { fire?: boolean } = {}): void {
+  private pinnedFoldersGroupNode(): PinnedFoldersGroupNode | undefined {
+    const children = this.pinnedFolders().map((pin) => this.pinnedFolderNode(pin));
+    if (children.length === 0) {
+      return undefined;
+    }
+
+    return {
+      kind: "pinnedGroup",
+      label: "Pinned folders",
+      description: `${children.length}`,
+      children
+    };
+  }
+
+  private pinnedFolderNodes(): PinnedFolderNode[] {
+    const group = this.nodes.find((node): node is PinnedFoldersGroupNode => node.kind === "pinnedGroup");
+    return group?.children ?? [];
+  }
+
+  private pinnedFolderNode(pin: PinnedFolder): PinnedFolderNode {
+    const resolution = this.resolvePinnedFolder(pin);
+    const label = pinnedFolderLabel(pin);
+    if (this.missingPinnedFolderKeys.has(pinnedFolderKey(pin))) {
+      return {
+        kind: "pinnedFolder",
+        pin,
+        label,
+        description: "missing folder",
+        state: "missingFolder"
+      };
+    }
+
+    if (resolution.state !== "ready") {
+      return {
+        kind: "pinnedFolder",
+        pin,
+        label,
+        description: resolution.state === "ambiguousWorkspace" ? "ambiguous workspace" : "missing workspace",
+        state: resolution.state
+      };
+    }
+
+    const children = this.pinnedResultFilesFor(pin);
+    const countText = this.mask && this.pinnedResultMask === this.mask ? ` ${children.length}` : "";
+    return {
+      kind: "pinnedFolder",
+      pin,
+      label,
+      description: `${pin.workspaceFolderName}${countText}`,
+      state: "ready",
+      children
+    };
+  }
+
+  private rebuildCurrentNodes(options: { fire?: boolean; probePinnedFolders?: boolean } = {}): void {
+    if (this.mask) {
+      this.rebuildResultNodes(options);
+      return;
+    }
+
+    this.nodes = this.withPinnedFolderNodes([
+      {
+        kind: "message",
+        label: "No filter active",
+        description: "Right-click a folder and choose Folder File Filter: Show Matching Files."
+      }
+    ]);
+    this.updateTreeMessage();
+    if (options.fire !== false) {
+      this.changed.fire(undefined);
+    }
+    if (options.probePinnedFolders !== false) {
+      this.schedulePinnedFolderProbe();
+    }
+  }
+
+  private rebuildResultNodes(options: { fire?: boolean; probePinnedFolders?: boolean } = {}): void {
     const files = sortFiles(this.files, configuredSortBy());
     const body = files.length > 0
       ? configuredGroupByExtension()
@@ -742,10 +1139,13 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
           }
         ];
 
-    this.nodes = this.withFilterNode(body);
+    this.nodes = this.withRootNodes(body);
     this.updateTreeMessage();
     if (options.fire !== false) {
       this.changed.fire(undefined);
+    }
+    if (options.probePinnedFolders !== false) {
+      this.schedulePinnedFolderProbe();
     }
   }
 
@@ -776,6 +1176,32 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
       clearTimeout(this.autoRefreshTimer);
       this.autoRefreshTimer = undefined;
     }
+  }
+
+  private schedulePinnedFolderProbe(): void {
+    const version = ++this.pinnedFolderProbeVersion;
+    void this.probePinnedFolders(version);
+  }
+
+  private async probePinnedFolders(version: number): Promise<void> {
+    const nextMissingKeys = new Set<string>();
+    for (const pin of this.pinnedFolders()) {
+      const resolution = this.resolvePinnedFolder(pin);
+      if (resolution.state !== "ready" || !resolution.sourceFolder) {
+        continue;
+      }
+
+      if (!await isDirectory(resolution.sourceFolder)) {
+        nextMissingKeys.add(pinnedFolderKey(pin));
+      }
+    }
+
+    if (version !== this.pinnedFolderProbeVersion || sameStringSet(this.missingPinnedFolderKeys, nextMissingKeys)) {
+      return;
+    }
+
+    this.missingPinnedFolderKeys = nextMissingKeys;
+    this.rebuildCurrentNodes({ probePinnedFolders: false });
   }
 
   private savedFilterLabelForMask(mask: string): string | undefined {
@@ -820,17 +1246,78 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
     this.focusRestoreTimers.add(timer);
   }
 
+  private adjacentFileForSelection(direction: ResultNavigationDirection): FileNode | undefined {
+    const displayFiles = this.fileNodesInDisplayOrder();
+    if (displayFiles.length === 0) {
+      return undefined;
+    }
+
+    const selectedFiles = this.treeView?.selection.filter(isFileNode) ?? [];
+    const selectedFile = selectedFiles.length > 0 ? selectedFiles[selectedFiles.length - 1] : undefined;
+    const selectedIndex = selectedFile
+      ? displayFiles.findIndex((file) => sameUri(file.uri, selectedFile.uri))
+      : -1;
+    const currentIndex = selectedIndex >= 0
+      ? selectedIndex
+      : direction === "next"
+        ? -1
+        : displayFiles.length;
+    const nextIndex = direction === "next"
+      ? Math.min(currentIndex + 1, displayFiles.length - 1)
+      : Math.max(currentIndex - 1, 0);
+
+    return displayFiles[nextIndex];
+  }
+
+  private fileNodesInDisplayOrder(): FileNode[] {
+    const files: FileNode[] = [];
+
+    for (const node of this.nodes) {
+      if (isFileNode(node)) {
+        files.push(node);
+      } else if (node.kind === "group") {
+        files.push(...node.children);
+      } else if (node.kind === "pinnedGroup") {
+        for (const pinnedFolder of node.children) {
+          files.push(...pinnedFolder.children ?? []);
+        }
+      }
+    }
+
+    return files;
+  }
+
   private contextFileNodes(node?: FolderFileFilterNode): FileNode[] {
-    const selected = this.treeView?.selection.filter(isFileNode) ?? [];
+    const selected = uniqueFileNodes(
+      (this.treeView?.selection ?? [])
+        .map((selectedNode) => this.storedFileNodeFromCommandNode(selectedNode))
+        .filter(isDefined)
+    );
+    const contextNode = this.storedFileNodeFromCommandNode(node);
+    if (!contextNode) {
+      return selected;
+    }
+
+    if (selected.some((selectedNode) => sameUri(selectedNode.uri, contextNode.uri))) {
+      return selected;
+    }
+
+    return [contextNode];
+  }
+
+  private storedFileNodeFromCommandNode(node: FolderFileFilterNode | undefined): FileNode | undefined {
     if (!isFileNode(node)) {
-      return selected;
+      return undefined;
     }
 
-    if (selected.some((selectedNode) => sameUri(selectedNode.uri, node.uri))) {
-      return selected;
-    }
+    return this.ownedFileNodes().find((file) => sameUri(file.uri, node.uri));
+  }
 
-    return [node];
+  private ownedFileNodes(): FileNode[] {
+    return uniqueFileNodes([
+      ...this.files,
+      ...[...this.pinnedResultFiles.values()].flat()
+    ]);
   }
 
   private async runForContextFiles(files: readonly FileNode[], action: (file: FileNode) => Thenable<unknown>): Promise<void> {
@@ -1028,7 +1515,7 @@ function configuredSavedFilters(): NamedFilter[] {
 
 function configuredMaxResults(): number {
   const configured = vscode.workspace.getConfiguration("folderFileFilter").get<unknown>("maxResults");
-  return normalizeMaxResults(configured, DEFAULT_MAX_RESULTS);
+  return normalizeMaxResults(configured, DEFAULT_MAX_RESULTS, MAX_RESULTS_LIMIT);
 }
 
 function configuredOpenOnSelection(): boolean {
@@ -1100,6 +1587,14 @@ function executeViewFocus(): void {
 
 function isFileNode(node: FolderFileFilterNode | undefined): node is FileNode {
   return node?.kind === "file";
+}
+
+function isDefined<T>(value: T | undefined): value is T {
+  return value !== undefined;
+}
+
+function isPinnedFolderNode(node: FolderFileFilterNode | undefined): node is PinnedFolderNode {
+  return node?.kind === "pinnedFolder";
 }
 
 function selectionKeyForNode(node: FileNode): string {
@@ -1180,6 +1675,112 @@ function activeTabUri(): vscode.Uri | undefined {
 
 function sameUri(left: vscode.Uri, right: vscode.Uri): boolean {
   return left.toString() === right.toString();
+}
+
+function uniqueFileNodes(files: readonly FileNode[]): FileNode[] {
+  const seen = new Set<string>();
+  const unique: FileNode[] = [];
+  for (const file of files) {
+    const key = selectionKeyForNode(file);
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    unique.push(file);
+  }
+
+  return unique;
+}
+
+function samePinnedFolder(left: PinnedFolder, right: PinnedFolder): boolean {
+  return left.workspaceFolderName === right.workspaceFolderName && left.relativePath === right.relativePath;
+}
+
+function sameStringSet(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
+  if (left.size !== right.size) {
+    return false;
+  }
+
+  for (const value of left) {
+    if (!right.has(value)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function pinnedFolderKey(folder: PinnedFolder): string {
+  return `${folder.workspaceFolderName}\u0000${folder.relativePath}`;
+}
+
+function workspaceFolderNameIsAmbiguous(name: string): boolean {
+  const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+  return workspaceFolders.filter((folder) => folder.name === name).length > 1;
+}
+
+function workspaceFolderForSourceFolder(sourceFolder: vscode.Uri): vscode.WorkspaceFolder | undefined {
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(sourceFolder);
+  if (!workspaceFolder) {
+    return undefined;
+  }
+
+  return workspaceRelativeFolderPath(workspaceFolder.uri, sourceFolder) === undefined ? undefined : workspaceFolder;
+}
+
+function workspaceRelativeFolderPath(workspaceRoot: vscode.Uri, sourceFolder: vscode.Uri): string | undefined {
+  if (workspaceRoot.scheme === "file" && sourceFolder.scheme === "file") {
+    const relative = path.relative(workspaceRoot.fsPath, sourceFolder.fsPath);
+    if (relative === "") {
+      return "";
+    }
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+      return undefined;
+    }
+
+    return relative.replace(/\\/g, "/");
+  }
+
+  if (workspaceRoot.scheme !== sourceFolder.scheme || workspaceRoot.authority !== sourceFolder.authority) {
+    return undefined;
+  }
+
+  const rootPath = stripTrailingSlash(workspaceRoot.path);
+  const sourcePath = stripTrailingSlash(sourceFolder.path);
+  if (sourcePath === rootPath) {
+    return "";
+  }
+  if (!sourcePath.startsWith(`${rootPath}/`)) {
+    return undefined;
+  }
+
+  return sourcePath.slice(rootPath.length + 1);
+}
+
+function pinnedFolderLabel(pin: PinnedFolder): string {
+  if (!pin.relativePath) {
+    return pin.workspaceFolderName;
+  }
+
+  return pin.relativePath;
+}
+
+function pinnedFolderTooltip(node: PinnedFolderNode): string {
+  const location = node.pin.relativePath
+    ? `${node.pin.workspaceFolderName}/${node.pin.relativePath}`
+    : node.pin.workspaceFolderName;
+  if (node.state === "missingWorkspace") {
+    return `${location} (workspace not open)`;
+  }
+  if (node.state === "ambiguousWorkspace") {
+    return `${location} (ambiguous workspace name)`;
+  }
+  if (node.state === "missingFolder") {
+    return `${location} (folder missing)`;
+  }
+
+  return location;
 }
 
 function maskIncludes(mask: string, inferredMask: string): boolean {

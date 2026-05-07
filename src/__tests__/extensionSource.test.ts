@@ -22,6 +22,15 @@ test("extension contributes a change-mask command in the Folder File Filter view
   assert.ok(commandPalette.every((item) => item.command !== "folderFileFilter.changeMask"));
 });
 
+test("extension declares restricted-mode workspace trust support", () => {
+  const packageJson = JSON.parse(readFileSync(resolve(__dirname, "../../package.json"), "utf8"));
+
+  assert.deepEqual(packageJson.capabilities?.untrustedWorkspaces, {
+    supported: true,
+    description: "Folder File Filter only reads workspace files through VS Code APIs and stores workspace-relative pinned folder metadata."
+  });
+});
+
 test("extension contributes an explicit source folder command in the results view", () => {
   const packageJson = JSON.parse(readFileSync(resolve(__dirname, "../../package.json"), "utf8"));
   const commands = packageJson.contributes.commands as Array<{ command: string; title: string }>;
@@ -46,6 +55,13 @@ test("source changes use the active Explorer resource without opening a system f
   const extensionSource = readFileSync(resolve(__dirname, "../../src/extension.ts"), "utf8");
 
   assert.doesNotMatch(extensionSource, /showOpenDialog|promptForSourceFolder/);
+  assert.match(extensionSource, /vscode\.workspace\.getWorkspaceFolder\(uri\)/);
+  assert.match(extensionSource, /workspaceFolderForSourceFolder\(sourceFolder\)/);
+  assert.match(extensionSource, /!vscode\.workspace\.getWorkspaceFolder\(uri\) \|\| await this\.isWorkspaceDirectory\(uri\)/);
+  assert.match(extensionSource, /private async activeSourceFolder\(\): Promise<vscode\.Uri \| undefined> \{\s+const uri = activeTabUri\(\) \?\? vscode\.window\.activeTextEditor\?\.document\.uri;\s+if \(!uri \|\| uri\.scheme !== "file" \|\| !vscode\.workspace\.getWorkspaceFolder\(uri\) \|\| await this\.isWorkspaceDirectory\(uri\)\) \{\s+return undefined;\s+\}\s+return this\.sourceFolderFromUri\(uri\);\s+\}/s);
+  assert.match(extensionSource, /private async isWorkspaceDirectory\(uri: vscode\.Uri\): Promise<boolean>/);
+  assert.match(extensionSource, /if \(uri\.scheme !== "file" \|\| !vscode\.workspace\.getWorkspaceFolder\(uri\)\) \{\s+return false;\s+\}\s+return isDirectory\(uri\);/s);
+  assert.match(extensionSource, /private async sourceFolderFromUri\(uri: vscode\.Uri\): Promise<vscode\.Uri \| undefined>/);
   assert.match(extensionSource, /const CLIPBOARD_PROBE_TEXT = "__folder_file_filter_clipboard_probe__";/);
   assert.match(extensionSource, /await vscode\.env\.clipboard\.writeText\(CLIPBOARD_PROBE_TEXT\)/);
   assert.match(extensionSource, /if \(copiedText === CLIPBOARD_PROBE_TEXT\) \{/);
@@ -133,6 +149,89 @@ test("extension supports saved named filters in the mask picker", () => {
   assert.match(extensionSource, /addNamedFilterSection\(items, added, "Saved filters", namedFilters\)/);
 });
 
+test("extension supports workspace-relative pinned folders without persisted absolute paths", () => {
+  const packageJson = JSON.parse(readFileSync(resolve(__dirname, "../../package.json"), "utf8"));
+  const commands = packageJson.contributes.commands as Array<{ command: string; title: string }>;
+  const viewTitle = packageJson.contributes.menus["view/title"] as Array<{ command: string; when: string }>;
+  const viewItemContext = packageJson.contributes.menus["view/item/context"] as Array<{ command: string; when: string }>;
+  const commandPalette = packageJson.contributes.menus["commandPalette"] as Array<{ command: string; when: string }>;
+  const extensionSource = readFileSync(resolve(__dirname, "../../src/extension.ts"), "utf8");
+  const pinnedFolderNodeInterface = extensionSource.match(/interface PinnedFolderNode \{[\s\S]*?\n\}/)?.[0] ?? "";
+
+  assert.ok(commands.some((command) =>
+    command.command === "folderFileFilter.pinSourceFolder"
+    && command.title === "Folder File Filter: Pin Source Folder"
+  ));
+  assert.ok(commands.some((command) =>
+    command.command === "folderFileFilter.unpinFolder"
+    && command.title === "Folder File Filter: Unpin Folder"
+  ));
+  assert.ok(viewTitle.some((item) =>
+    item.command === "folderFileFilter.pinSourceFolder"
+    && item.when === "view == folderFileFilter.results"
+  ));
+  assert.ok(viewItemContext.some((item) =>
+    item.command === "folderFileFilter.unpinFolder"
+    && item.when.includes("folderFileFilter.pinnedFolder")
+  ));
+  assert.ok(commandPalette.some((item) =>
+    item.command === "folderFileFilter.unpinFolder"
+    && item.when === "false"
+  ));
+  assert.match(extensionSource, /const PINNED_FOLDERS_KEY = "folderFileFilter\.pinnedFolders";/);
+  assert.match(extensionSource, /this\.workspaceState\.update\(PINNED_FOLDERS_KEY, next\)/);
+  assert.match(extensionSource, /workspaceFolderName: workspaceFolder\.name/);
+  assert.match(extensionSource, /relativePath: workspaceRelativePath/);
+  assert.match(extensionSource, /const pin = this\.storedPinnedFolderFromCommandNode\(node\);/);
+  assert.match(extensionSource, /const \[requestedPin\] = normalizePinnedFolders\(\[node\.pin\], 1\);/);
+  assert.match(extensionSource, /this\.pinnedFolders\(\)\.find\(\(storedPin\) => samePinnedFolder\(storedPin, requestedPin\)\)/);
+  assert.match(extensionSource, /workspaceRelativeFolderPath\(workspaceFolder\.uri, sourceFolder\) === undefined/);
+  assert.match(extensionSource, /matchingFolders\.length > 1/);
+  assert.match(extensionSource, /private missingPinnedFolderKeys = new Set<string>\(\);/);
+  assert.match(extensionSource, /private async probePinnedFolders\(version: number\): Promise<void>/);
+  assert.match(extensionSource, /private pinnedResultFiles = new Map<string, FileNode\[\]>\(\);/);
+  assert.match(extensionSource, /private async refreshPinnedFolderResults\(mask: string\): Promise<void>/);
+  assert.match(extensionSource, /new vscode\.RelativePattern\(sourceFolder, mask\)/);
+  assert.match(extensionSource, /children = this\.pinnedResultFilesFor\(pin\)/);
+  assert.match(extensionSource, /node\.kind === "group" \|\| node\.kind === "pinnedGroup" \|\| node\.kind === "pinnedFolder"/);
+  assert.doesNotMatch(pinnedFolderNodeInterface, /sourceFolder\?: vscode\.Uri;/);
+  assert.doesNotMatch(extensionSource, /workspaceState\.update\(PINNED_FOLDERS_KEY, (?:sourceFolder|workspaceFolder|.*fsPath|.*toString)/);
+});
+
+test("result action command nodes are resolved from current provider-owned results", () => {
+  const extensionSource = readFileSync(resolve(__dirname, "../../src/extension.ts"), "utf8");
+
+  assert.match(extensionSource, /private storedFileNodeFromCommandNode\(node: FolderFileFilterNode \| undefined\): FileNode \| undefined/);
+  assert.match(extensionSource, /private ownedFileNodes\(\): FileNode\[\]/);
+  assert.match(extensionSource, /\.\.\.\[...this\.pinnedResultFiles\.values\(\)\]\.flat\(\)/);
+  assert.match(extensionSource, /this\.ownedFileNodes\(\)\.find\(\(file\) => sameUri\(file\.uri, node\.uri\)\)/);
+  assert.match(extensionSource, /const contextNode = this\.storedFileNodeFromCommandNode\(node\);/);
+});
+
+test("max results has a runtime and manifest hard cap", () => {
+  const packageJson = JSON.parse(readFileSync(resolve(__dirname, "../../package.json"), "utf8"));
+  const properties = packageJson.contributes.configuration.properties as Record<string, Record<string, unknown>>;
+  const extensionSource = readFileSync(resolve(__dirname, "../../src/extension.ts"), "utf8");
+
+  assert.equal(properties["folderFileFilter.maxResults"].maximum, 5000);
+  assert.match(extensionSource, /const MAX_RESULTS_LIMIT = 5000;/);
+  assert.match(extensionSource, /normalizeMaxResults\(configured, DEFAULT_MAX_RESULTS, MAX_RESULTS_LIMIT\)/);
+});
+
+test("open-on-selection arrow keybindings only override file rows", () => {
+  const packageJson = JSON.parse(readFileSync(resolve(__dirname, "../../package.json"), "utf8"));
+  const keybindings = packageJson.contributes.keybindings as Array<{ command: string; when: string }>;
+
+  for (const command of ["folderFileFilter.focusDownAndSelect", "folderFileFilter.focusUpAndSelect"]) {
+    const keybinding = keybindings.find((item) => item.command === command);
+    assert.ok(keybinding);
+    assert.equal(
+      keybinding.when,
+      "focusedView == folderFileFilter.results && config.folderFileFilter.openOnSelection && viewItem == folderFileFilter.file"
+    );
+  }
+});
+
 test("extension can sort and group results without replacing the search owner", () => {
   const packageJson = JSON.parse(readFileSync(resolve(__dirname, "../../package.json"), "utf8"));
   const commands = packageJson.contributes.commands as Array<{ command: string; title: string }>;
@@ -146,9 +245,10 @@ test("extension can sort and group results without replacing the search owner", 
   assert.ok(viewTitle.some((item) => item.command === "folderFileFilter.toggleGroupByExtension"));
   assert.ok(properties["folderFileFilter.sortBy"]);
   assert.ok(properties["folderFileFilter.groupByExtension"]);
-  assert.match(extensionSource, /type FolderFileFilterNode = FilterNode \| GroupNode \| FileNode \| MessageNode/);
+  assert.match(extensionSource, /type FolderFileFilterNode = FilterNode \| PinnedFoldersGroupNode \| PinnedFolderNode \| GroupNode \| FileNode \| MessageNode/);
   assert.match(extensionSource, /interface GroupNode/);
   assert.match(extensionSource, /private files: FileNode\[\] = \[\];/);
+  assert.match(extensionSource, /public getParent\(node: FolderFileFilterNode\): FolderFileFilterNode \| undefined/);
   assert.match(extensionSource, /vscode\.commands\.registerCommand\("folderFileFilter\.toggleGroupByExtension", async \(\) =>/);
   assert.match(extensionSource, /public async toggleGroupByExtension\(\): Promise<void>/);
   assert.match(extensionSource, /await vscode\.workspace\.getConfiguration\("folderFileFilter"\)\.update\("groupByExtension", next, vscode\.ConfigurationTarget\.Global\)/);

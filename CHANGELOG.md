@@ -7,8 +7,10 @@ All notable changes to Folder File Filter are documented here.
 - Added packaged changelog support for Open VSX and VS Code Marketplace release notes.
 - Updated patch release scripts to finalize `## Unreleased` into the released version number and include `CHANGELOG.md` in the release commit.
 - Added saved named filters that appear in the mask picker and can be updated from the results view.
+- Added workspace-relative pinned source folders in the results view, with per-pinned-folder matches for the active mask.
 - Added result sorting by path, file name, or extension, plus optional grouping by extension.
 - Added automatic refresh of active results when matching files are created, changed, or deleted.
+- Hardened command handling so searches and result actions stay inside provider-owned workspace results.
 
 ## 0.0.19 - 2026-05-06
 
@@ -37,6 +39,7 @@ All notable changes to Folder File Filter are documented here.
 - `Mask picker`: the dropdown used to type or choose a glob mask.
 - `MPL`: Mozilla Public License.
 - `Open VSX`: the open extension registry used by VS Code-compatible editors.
+- `Pinned folder`: a workspace-relative source folder shortcut stored in VS Code workspace state.
 - `Saved filter`: a named glob mask stored in extension settings.
 - `Sort mode`: the selected result ordering, such as path, file name, or extension.
 - `VS Code`: Visual Studio Code.

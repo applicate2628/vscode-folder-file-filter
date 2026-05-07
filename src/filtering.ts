@@ -9,6 +9,11 @@ export interface NamedFilter {
   mask: string;
 }
 
+export interface PinnedFolder {
+  workspaceFolderName: string;
+  relativePath: string;
+}
+
 export function normalizeMask(value: string): string | undefined {
   const mask = value.trim();
   return mask.length > 0 ? mask : undefined;
@@ -39,12 +44,17 @@ export function rememberRecentMask(recentMasks: readonly string[], mask: string,
   return uniqueInOrder([normalized, ...existing]).slice(0, maxCount);
 }
 
-export function normalizeMaxResults(value: unknown, fallback: number): number {
+export function normalizeMaxResults(
+  value: unknown,
+  fallback: number,
+  maximum = Number.MAX_SAFE_INTEGER
+): number {
+  const maxValue = Number.isFinite(maximum) ? Math.max(1, Math.floor(maximum)) : Number.MAX_SAFE_INTEGER;
   if (typeof value !== "number" || !Number.isFinite(value) || value < 1) {
-    return fallback;
+    return Math.min(fallback, maxValue);
   }
 
-  return Math.floor(value);
+  return Math.min(Math.floor(value), maxValue);
 }
 
 export function normalizeOpenOnSelection(value: unknown, fallback: boolean): boolean {
@@ -110,6 +120,64 @@ export function normalizeNamedFilters(value: unknown): NamedFilter[] {
   }
 
   return filters;
+}
+
+export function normalizePinnedFolders(value: unknown, limit: number): PinnedFolder[] {
+  const maxCount = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : 0;
+  if (!Array.isArray(value) || maxCount <= 0) {
+    return [];
+  }
+
+  const folders: PinnedFolder[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    const pinnedFolder = normalizePinnedFolder(item);
+    if (!pinnedFolder) {
+      continue;
+    }
+
+    const key = pinnedFolderKey(pinnedFolder);
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    folders.push(pinnedFolder);
+    if (folders.length >= maxCount) {
+      break;
+    }
+  }
+
+  return folders;
+}
+
+export function upsertPinnedFolder(
+  folders: readonly PinnedFolder[],
+  folder: PinnedFolder,
+  limit: number
+): PinnedFolder[] {
+  const current = normalizePinnedFolders(folders, limit);
+  const [normalized] = normalizePinnedFolders([folder], 1);
+  if (!normalized) {
+    return current;
+  }
+
+  const existingIndex = current.findIndex((item) => samePinnedFolder(item, normalized));
+  if (existingIndex >= 0) {
+    return current.map((item, index) => (index === existingIndex ? normalized : item));
+  }
+
+  return current.length < Math.max(0, Math.floor(limit)) ? [...current, normalized] : current;
+}
+
+export function removePinnedFolder(folders: readonly PinnedFolder[], folder: PinnedFolder): PinnedFolder[] {
+  const [normalized] = normalizePinnedFolders([folder], 1);
+  if (!normalized) {
+    return normalizePinnedFolders(folders, Number.MAX_SAFE_INTEGER);
+  }
+
+  return normalizePinnedFolders(folders, Number.MAX_SAFE_INTEGER)
+    .filter((item) => !samePinnedFolder(item, normalized));
 }
 
 export function upsertNamedFilter(filters: readonly NamedFilter[], label: string, mask: string): NamedFilter[] {
@@ -234,6 +302,58 @@ function uniqueInOrder(values: readonly string[]): string[] {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function normalizePinnedFolder(value: unknown): PinnedFolder | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const workspaceFolderName = typeof value.workspaceFolderName === "string"
+    ? value.workspaceFolderName.trim()
+    : "";
+  const relativePath = typeof value.relativePath === "string"
+    ? normalizePinnedRelativePath(value.relativePath)
+    : undefined;
+  if (!workspaceFolderName || relativePath === undefined) {
+    return undefined;
+  }
+
+  return { workspaceFolderName, relativePath };
+}
+
+function normalizePinnedRelativePath(value: string): string | undefined {
+  let normalized = value.trim().replace(/\\/g, "/").replace(/\/+/g, "/");
+  if (normalized === "." || normalized === "./") {
+    normalized = "";
+  }
+  while (normalized.startsWith("./")) {
+    normalized = normalized.slice(2);
+  }
+  normalized = normalized.replace(/\/+$/, "");
+
+  if (
+    normalized.startsWith("/")
+    || /^[A-Za-z]:/.test(normalized)
+    || normalized.toLowerCase().startsWith("file:")
+  ) {
+    return undefined;
+  }
+
+  const segments = normalized.split("/").filter((segment) => segment.length > 0);
+  if (segments.some((segment) => segment === "..")) {
+    return undefined;
+  }
+
+  return segments.join("/");
+}
+
+function samePinnedFolder(left: PinnedFolder, right: PinnedFolder): boolean {
+  return left.workspaceFolderName === right.workspaceFolderName && left.relativePath === right.relativePath;
+}
+
+function pinnedFolderKey(folder: PinnedFolder): string {
+  return `${folder.workspaceFolderName}\u0000${folder.relativePath}`;
 }
 
 function fileNameForSort(relativePath: string): string {

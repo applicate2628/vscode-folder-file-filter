@@ -20,6 +20,7 @@ Use this checklist before a release build or after changing Explorer integration
 - [ ] Pick an extension suggested under `Existing in this folder`.
 - [ ] Confirm the results view shows `Mask: <mask> (<count>) <folder>`.
 - [ ] Confirm every listed file belongs to the selected source folder and matches the mask.
+- [ ] Confirm a folder outside the current workspace is rejected instead of searched.
 
 ## File Context Menu
 
@@ -41,6 +42,24 @@ Use this checklist before a release build or after changing Explorer integration
 - [ ] Click `Clear`.
 - [ ] Select a folder and click `Change Mask` again.
 - [ ] Confirm the picker still opens and uses the selected folder.
+
+## Pinned Folders
+
+- [ ] Select a folder in Explorer.
+- [ ] Click `Pin Source Folder` in the `Folder File Filter` view title.
+- [ ] Confirm a `Pinned folders` group appears above the active mask/results.
+- [ ] Confirm the pinned item label uses the folder name or workspace-relative path, not a machine-specific absolute path.
+- [ ] Pin two folders that both contain files matching the active mask.
+- [ ] Confirm each pinned folder shows its own matching child files and count.
+- [ ] Click the pinned folder.
+- [ ] Confirm the mask picker opens for that pinned source folder.
+- [ ] Pick a mask and confirm the results use the pinned source folder.
+- [ ] Click `Pin Source Folder` for the same source folder again.
+- [ ] Confirm no duplicate pin is created.
+- [ ] Right-click the pinned folder and run `Folder File Filter: Unpin Folder`.
+- [ ] Confirm the pin is removed and the active filter is otherwise unchanged.
+- [ ] Pin a folder, click `Clear`, and confirm the pinned folder remains available.
+- [ ] In a multi-root workspace with duplicate workspace folder names, confirm pinning fails closed instead of binding to the wrong root.
 
 ## Mask Picker
 
@@ -137,6 +156,7 @@ Use this checklist before a release build or after changing Explorer integration
   - `Auto Filter Files From Selected File`
   - `Auto Filter From Active File`
   - `Restore Focus After Open Delay Ms`
+- [ ] Confirm `Max Results` cannot be set above `5000` through settings.
 
 ## Release Checks
 
@@ -156,5 +176,6 @@ Use this checklist before a release build or after changing Explorer integration
 - `Mask`: the glob pattern used to select matching files.
 - `Mask picker`: the dropdown used to type or choose a mask.
 - `Open VSX`: the open extension registry used by VS Code-compatible editors.
+- `Pinned folder`: a workspace-relative source folder shortcut stored in VS Code workspace state.
 - `VS Code`: Visual Studio Code.
 - `VSIX`: the packaged install format for VS Code extensions.

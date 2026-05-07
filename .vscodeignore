@@ -3,6 +3,8 @@ out/__tests__/**
 scripts/**
 docs/**
 node_modules/**
+.scratch/**
+AGENTS.md
 package-lock.json
 tsconfig.json
 .gitignore
