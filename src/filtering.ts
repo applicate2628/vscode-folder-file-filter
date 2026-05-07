@@ -2,6 +2,13 @@ export interface RelativeFile {
   relativePath: string;
 }
 
+export type FileSortMode = "path" | "name" | "extension";
+
+export interface NamedFilter {
+  label: string;
+  mask: string;
+}
+
 export function normalizeMask(value: string): string | undefined {
   const mask = value.trim();
   return mask.length > 0 ? mask : undefined;
@@ -60,6 +67,68 @@ export function normalizeRestoreFocusDelayMs(value: unknown, fallback: number): 
   return Math.floor(value);
 }
 
+export function normalizeAutoRefreshResults(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+export function normalizeAutoRefreshDebounceMs(value: unknown, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return fallback;
+  }
+
+  return Math.floor(value);
+}
+
+export function normalizeFileSortMode(value: unknown, fallback: FileSortMode): FileSortMode {
+  return value === "path" || value === "name" || value === "extension" ? value : fallback;
+}
+
+export function normalizeGroupByExtension(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
+}
+
+export function normalizeNamedFilters(value: unknown): NamedFilter[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const filters: NamedFilter[] = [];
+  const seenLabels = new Set<string>();
+  for (const item of value) {
+    if (!isRecord(item)) {
+      continue;
+    }
+
+    const label = typeof item.label === "string" ? item.label.trim() : "";
+    const mask = typeof item.mask === "string" ? normalizeMask(item.mask) : undefined;
+    if (!label || !mask || seenLabels.has(label)) {
+      continue;
+    }
+
+    seenLabels.add(label);
+    filters.push({ label, mask });
+  }
+
+  return filters;
+}
+
+export function upsertNamedFilter(filters: readonly NamedFilter[], label: string, mask: string): NamedFilter[] {
+  const normalizedLabel = label.trim();
+  const normalizedMask = normalizeMask(mask);
+  if (!normalizedLabel || !normalizedMask) {
+    return normalizeNamedFilters(filters);
+  }
+
+  const current = normalizeNamedFilters(filters);
+  const existingIndex = current.findIndex((filter) => filter.label === normalizedLabel);
+  const next = { label: normalizedLabel, mask: normalizedMask };
+  if (existingIndex === -1) {
+    return [...current, next];
+  }
+
+  return current.map((filter, index) => (index === existingIndex ? next : filter));
+}
+
 export function inferMaskFromFileName(fileName: string): string {
   const trimmed = fileName.trim();
   if (!trimmed) {
@@ -115,6 +184,25 @@ export function sortByRelativePath<T extends RelativeFile>(files: readonly T[]):
   return [...files].sort((left, right) => left.relativePath.localeCompare(right.relativePath));
 }
 
+export function sortFiles<T extends RelativeFile>(files: readonly T[], mode: FileSortMode): T[] {
+  if (mode === "name") {
+    return [...files].sort((left, right) =>
+      fileNameForSort(left.relativePath).localeCompare(fileNameForSort(right.relativePath), undefined, { numeric: true })
+      || left.relativePath.localeCompare(right.relativePath, undefined, { numeric: true })
+    );
+  }
+
+  if (mode === "extension") {
+    return [...files].sort((left, right) =>
+      extensionForSort(left.relativePath).localeCompare(extensionForSort(right.relativePath), undefined, { numeric: true })
+      || fileNameForSort(left.relativePath).localeCompare(fileNameForSort(right.relativePath), undefined, { numeric: true })
+      || left.relativePath.localeCompare(right.relativePath, undefined, { numeric: true })
+    );
+  }
+
+  return sortByRelativePath(files);
+}
+
 export function pickSelectionKeyToOpen(
   previousSelectionKeys: ReadonlySet<string>,
   currentSelectionKeys: readonly string[]
@@ -142,6 +230,22 @@ function uniqueInOrder(values: readonly string[]): string[] {
   }
 
   return unique;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function fileNameForSort(relativePath: string): string {
+  const normalized = relativePath.replace(/\\/g, "/");
+  const slash = normalized.lastIndexOf("/");
+  return (slash >= 0 ? normalized.slice(slash + 1) : normalized).toLowerCase();
+}
+
+function extensionForSort(relativePath: string): string {
+  const fileName = fileNameForSort(relativePath);
+  const dotIndex = fileName.lastIndexOf(".");
+  return dotIndex > 0 && dotIndex < fileName.length - 1 ? fileName.slice(dotIndex) : "";
 }
 
 function inferExtensionMaskForSuggestion(fileName: string): string | undefined {

@@ -55,6 +55,9 @@
     "onCommand:folderFileFilter.refresh",
     "onCommand:folderFileFilter.changeMask",
     "onCommand:folderFileFilter.changeSourceFolder",
+    "onCommand:folderFileFilter.saveFilter",
+    "onCommand:folderFileFilter.changeSort",
+    "onCommand:folderFileFilter.toggleGroupByExtension",
     "onCommand:folderFileFilter.clear",
     "onCommand:folderFileFilter.openSettings",
     "onCommand:folderFileFilter.openResult",
@@ -110,24 +113,83 @@
           "description": "Maximum number of files returned by one folder file filter search.",
           "markdownDescription": "Maximum number of files returned by one folder file filter search."
         },
+        "folderFileFilter.savedFilters": {
+          "type": "array",
+          "default": [],
+          "order": 4,
+          "description": "Named glob masks shown in the Folder File Filter mask picker.",
+          "markdownDescription": "Named glob masks shown in the Folder File Filter mask picker.",
+          "items": {
+            "type": "object",
+            "required": [
+              "label",
+              "mask"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "label": {
+                "type": "string",
+                "description": "Saved filter name shown in the mask picker."
+              },
+              "mask": {
+                "type": "string",
+                "description": "Glob mask used by this saved filter."
+              }
+            }
+          }
+        },
+        "folderFileFilter.sortBy": {
+          "type": "string",
+          "default": "path",
+          "enum": [
+            "path",
+            "name",
+            "extension"
+          ],
+          "order": 5,
+          "description": "Sort order used for Folder File Filter results.",
+          "markdownDescription": "Sort order used for Folder File Filter results."
+        },
+        "folderFileFilter.groupByExtension": {
+          "type": "boolean",
+          "default": false,
+          "order": 6,
+          "description": "Group Folder File Filter results by file extension.",
+          "markdownDescription": "Group Folder File Filter results by file extension."
+        },
+        "folderFileFilter.autoRefreshResults": {
+          "type": "boolean",
+          "default": true,
+          "order": 7,
+          "description": "Automatically refresh active Folder File Filter results when matching files are created, changed, or deleted.",
+          "markdownDescription": "Automatically refresh active Folder File Filter results when matching files are created, changed, or deleted."
+        },
+        "folderFileFilter.autoRefreshDebounceMs": {
+          "type": "number",
+          "default": 300,
+          "minimum": 1,
+          "order": 8,
+          "description": "Delay before auto-refreshing Folder File Filter results after file changes.",
+          "markdownDescription": "Delay before auto-refreshing Folder File Filter results after file changes."
+        },
         "folderFileFilter.openOnSelection": {
           "type": "boolean",
           "default": false,
-          "order": 4,
+          "order": 9,
           "description": "Open the selected result immediately while moving through the Folder File Filter results list. Files open with their default editor in preview mode and focus stays in the results view.",
           "markdownDescription": "Open the selected result immediately while moving through the Folder File Filter results list. Files open with their default editor in preview mode and focus stays in the results view."
         },
         "folderFileFilter.autoFilterFilesFromSelectedFile": {
           "type": "boolean",
           "default": true,
-          "order": 5,
+          "order": 10,
           "description": "When running Folder File Filter from a file, immediately show files in the same folder that match the selected file extension. Disable to confirm or edit the inferred mask first.",
           "markdownDescription": "When running Folder File Filter from a file, immediately show files in the same folder that match the selected file extension. Disable to confirm or edit the inferred mask first."
         },
         "folderFileFilter.autoFilterFromActiveFile": {
           "type": "boolean",
           "default": true,
-          "order": 6,
+          "order": 11,
           "description": "Automatically update Folder File Filter when the active editor tab changes to a file. The filter uses that file's parent folder and inferred extension mask.",
           "markdownDescription": "Automatically update Folder File Filter when the active editor tab changes to a file. The filter uses that file's parent folder and inferred extension mask."
         },
@@ -135,7 +197,7 @@
           "type": "number",
           "default": 150,
           "minimum": 0,
-          "order": 7,
+          "order": 12,
           "description": "Delay before Folder File Filter restores focus again after auto-opening a result. Increase this if a custom editor takes focus after opening; set to 0 to disable delayed refocus.",
           "markdownDescription": "Delay before Folder File Filter restores focus again after auto-opening a result. Increase this if a custom editor takes focus after opening; set to `0` to disable delayed refocus."
         }
@@ -174,6 +236,21 @@
         "command": "folderFileFilter.changeSourceFolder",
         "title": "Folder File Filter: Change Source Folder",
         "icon": "$(folder-opened)"
+      },
+      {
+        "command": "folderFileFilter.saveFilter",
+        "title": "Folder File Filter: Save Filter",
+        "icon": "$(star-full)"
+      },
+      {
+        "command": "folderFileFilter.changeSort",
+        "title": "Folder File Filter: Change Sort",
+        "icon": "$(list-ordered)"
+      },
+      {
+        "command": "folderFileFilter.toggleGroupByExtension",
+        "title": "Folder File Filter: Toggle Group By Extension",
+        "icon": "$(symbol-folder)"
       },
       {
         "command": "folderFileFilter.clear",
@@ -264,19 +341,34 @@
           "group": "navigation@1"
         },
         {
+          "command": "folderFileFilter.saveFilter",
+          "when": "view == folderFileFilter.results",
+          "group": "navigation@2"
+        },
+        {
+          "command": "folderFileFilter.changeSort",
+          "when": "view == folderFileFilter.results",
+          "group": "navigation@3"
+        },
+        {
+          "command": "folderFileFilter.toggleGroupByExtension",
+          "when": "view == folderFileFilter.results",
+          "group": "navigation@4"
+        },
+        {
           "command": "folderFileFilter.refresh",
           "when": "view == folderFileFilter.results",
-          "group": "navigation"
+          "group": "navigation@5"
         },
         {
           "command": "folderFileFilter.clear",
           "when": "view == folderFileFilter.results",
-          "group": "navigation"
+          "group": "navigation@6"
         },
         {
           "command": "folderFileFilter.openSettings",
           "when": "view == folderFileFilter.results",
-          "group": "navigation"
+          "group": "navigation@7"
         }
       ],
       "view/item/context": [

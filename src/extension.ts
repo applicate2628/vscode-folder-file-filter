@@ -1,19 +1,27 @@
 import * as path from "node:path";
 import * as vscode from "vscode";
 import {
+  FileSortMode,
+  NamedFilter,
   inferFolderExtensionMasks,
   inferMaskFromFileNames,
   inferMaskFromFileName,
   normalizeAutoFilterFromActiveFile,
   normalizeAutoFilterFilesFromSelectedFile,
+  normalizeAutoRefreshDebounceMs,
+  normalizeAutoRefreshResults,
+  normalizeFileSortMode,
+  normalizeGroupByExtension,
   normalizeMaskList,
   normalizeMask,
   normalizeMaxResults,
+  normalizeNamedFilters,
   normalizeOpenOnSelection,
   normalizeRestoreFocusDelayMs,
   pickSelectionKeyToOpen,
   rememberRecentMask as updatedRecentMasks,
-  sortByRelativePath
+  sortFiles,
+  upsertNamedFilter
 } from "./filtering";
 
 const VIEW_ID = "folderFileFilter.results";
@@ -38,6 +46,10 @@ const DEFAULT_OPEN_ON_SELECTION = false;
 const DEFAULT_AUTO_FILTER_FILES_FROM_SELECTED_FILE = true;
 const DEFAULT_AUTO_FILTER_FROM_ACTIVE_FILE = true;
 const DEFAULT_RESTORE_FOCUS_AFTER_OPEN_DELAY_MS = 150;
+const DEFAULT_AUTO_REFRESH_RESULTS = true;
+const DEFAULT_AUTO_REFRESH_DEBOUNCE_MS = 300;
+const DEFAULT_SORT_BY: FileSortMode = "path";
+const DEFAULT_GROUP_BY_EXTENSION = false;
 const FOLDER_EXTENSION_MASK_LIMIT = 24;
 const RECENT_MASKS_KEY = "folderFileFilter.recentMasks";
 const RECENT_MASK_LIMIT = 12;
@@ -47,13 +59,20 @@ const LIST_FOCUS_DOWN_COMMAND = "list.focusDown";
 const LIST_FOCUS_UP_COMMAND = "list.focusUp";
 const LIST_SELECT_COMMAND = "list.select";
 
-type FolderFileFilterNode = FilterNode | FileNode | MessageNode;
+type FolderFileFilterNode = FilterNode | GroupNode | FileNode | MessageNode;
 type FilterOrigin = "manual" | "file";
 
 interface FilterNode {
   kind: "filter";
   label: string;
   description?: string;
+}
+
+interface GroupNode {
+  kind: "group";
+  label: string;
+  description?: string;
+  children: FileNode[];
 }
 
 interface FileNode {
@@ -102,6 +121,15 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("folderFileFilter.changeSourceFolder", async () => {
       await provider.changeSourceFolder();
     }),
+    vscode.commands.registerCommand("folderFileFilter.saveFilter", async () => {
+      await provider.saveCurrentFilter();
+    }),
+    vscode.commands.registerCommand("folderFileFilter.changeSort", async () => {
+      await provider.changeSort();
+    }),
+    vscode.commands.registerCommand("folderFileFilter.toggleGroupByExtension", async () => {
+      await provider.toggleGroupByExtension();
+    }),
     vscode.commands.registerCommand("folderFileFilter.clear", () => {
       provider.clear();
     }),
@@ -141,6 +169,20 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.window.onDidChangeActiveTextEditor(async (editor) => {
       await provider.showMatchingFilesFromActiveFile(editor?.document.uri);
+    }),
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (
+        event.affectsConfiguration("folderFileFilter.sortBy")
+        || event.affectsConfiguration("folderFileFilter.groupByExtension")
+      ) {
+        provider.applyPresentationSettings();
+      }
+      if (
+        event.affectsConfiguration("folderFileFilter.autoRefreshResults")
+        || event.affectsConfiguration("folderFileFilter.autoRefreshDebounceMs")
+      ) {
+        provider.updateAutoRefreshWatcher();
+      }
     })
   );
 
@@ -154,6 +196,9 @@ export function deactivate(): void {
 class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilterNode>, vscode.Disposable {
   private readonly changed = new vscode.EventEmitter<FolderFileFilterNode | undefined>();
   private readonly focusRestoreTimers = new Set<ReturnType<typeof setTimeout>>();
+  private fileWatcher: vscode.FileSystemWatcher | undefined;
+  private autoRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+  private files: FileNode[] = [];
   private nodes: FolderFileFilterNode[] = [
     {
       kind: "message",
@@ -182,6 +227,8 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
       clearTimeout(timer);
     }
     this.focusRestoreTimers.clear();
+    this.disposeAutoRefreshWatcher();
+    this.clearAutoRefreshTimer();
     this.changed.dispose();
   }
 
@@ -207,6 +254,14 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
       return item;
     }
 
+    if (node.kind === "group") {
+      const item = new vscode.TreeItem(node.label, vscode.TreeItemCollapsibleState.Expanded);
+      item.description = node.description;
+      item.contextValue = "folderFileFilter.group";
+      item.iconPath = new vscode.ThemeIcon("symbol-folder");
+      return item;
+    }
+
     const item = new vscode.TreeItem(node.relativePath, vscode.TreeItemCollapsibleState.None);
     item.resourceUri = node.uri;
     item.contextValue = "folderFileFilter.file";
@@ -220,7 +275,11 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
   }
 
   public getChildren(node?: FolderFileFilterNode): FolderFileFilterNode[] {
-    return node ? [] : this.nodes;
+    if (!node) {
+      return this.nodes;
+    }
+
+    return node.kind === "group" ? node.children : [];
   }
 
   public async openContextFiles(node?: FolderFileFilterNode): Promise<void> {
@@ -429,11 +488,80 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
     await this.search(sourceFolder, mask, "manual");
   }
 
+  public async saveCurrentFilter(): Promise<void> {
+    if (!this.mask) {
+      vscode.window.showInformationMessage("Folder File Filter: no active mask to save.");
+      return;
+    }
+
+    const label = await vscode.window.showInputBox({
+      title: "Folder File Filter",
+      prompt: "Name this filter",
+      value: this.savedFilterLabelForMask(this.mask) ?? ""
+    });
+    const normalizedLabel = typeof label === "string" ? label.trim() : "";
+    if (!normalizedLabel) {
+      return;
+    }
+
+    const filters = upsertNamedFilter(configuredSavedFilters(), normalizedLabel, this.mask);
+    await vscode.workspace.getConfiguration("folderFileFilter").update("savedFilters", filters, vscode.ConfigurationTarget.Global);
+    vscode.window.showInformationMessage(`Folder File Filter: saved filter '${normalizedLabel}'.`);
+  }
+
+  public async changeSort(): Promise<void> {
+    const options: Array<vscode.QuickPickItem & { sortBy: FileSortMode }> = [
+      { label: "Path", description: "Sort by relative path", sortBy: "path" },
+      { label: "Name", description: "Sort by file name", sortBy: "name" },
+      { label: "Extension", description: "Sort by file extension", sortBy: "extension" }
+    ];
+    const current = configuredSortBy();
+    const selected = await vscode.window.showQuickPick(
+      options.map((item) => ({ ...item, picked: item.sortBy === current })),
+      {
+        placeHolder: "Choose Folder File Filter result sort order"
+      }
+    );
+    if (!selected) {
+      return;
+    }
+
+    await vscode.workspace.getConfiguration("folderFileFilter").update("sortBy", selected.sortBy, vscode.ConfigurationTarget.Global);
+    this.applyPresentationSettings();
+  }
+
+  public async toggleGroupByExtension(): Promise<void> {
+    const next = !configuredGroupByExtension();
+    await vscode.workspace.getConfiguration("folderFileFilter").update("groupByExtension", next, vscode.ConfigurationTarget.Global);
+    this.applyPresentationSettings();
+  }
+
+  public applyPresentationSettings(): void {
+    this.rebuildResultNodes();
+  }
+
+  public updateAutoRefreshWatcher(): void {
+    this.disposeAutoRefreshWatcher();
+
+    if (!configuredAutoRefreshResults() || !this.sourceFolder || !this.mask) {
+      return;
+    }
+
+    const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(this.sourceFolder, this.mask));
+    watcher.onDidCreate(() => this.scheduleAutoRefresh());
+    watcher.onDidChange(() => this.scheduleAutoRefresh());
+    watcher.onDidDelete(() => this.scheduleAutoRefresh());
+    this.fileWatcher = watcher;
+  }
+
   public clear(): void {
     this.mask = undefined;
     this.filterOrigin = undefined;
     this.resultCount = undefined;
+    this.files = [];
     this.lastSelectionKeys.clear();
+    this.disposeAutoRefreshWatcher();
+    this.clearAutoRefreshTimer();
     this.nodes = [
       {
         kind: "message",
@@ -445,48 +573,46 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
     this.changed.fire(undefined);
   }
 
-  private async search(sourceFolder: vscode.Uri, mask: string, origin: FilterOrigin): Promise<void> {
+  private async search(
+    sourceFolder: vscode.Uri,
+    mask: string,
+    origin: FilterOrigin,
+    options: { quiet?: boolean } = {}
+  ): Promise<void> {
     this.sourceFolder = sourceFolder;
     this.mask = mask;
     this.filterOrigin = origin;
     this.resultCount = undefined;
-    this.lastSelectionKeys.clear();
-    this.nodes = this.withFilterNode([
-      {
-        kind: "message",
-        label: "Searching...",
-        description: `${mask} in ${folderLabel(sourceFolder)}`
-      }
-    ]);
-    this.updateTreeMessage();
-    this.changed.fire(undefined);
+    if (!options.quiet) {
+      this.lastSelectionKeys.clear();
+      this.nodes = this.withFilterNode([
+        {
+          kind: "message",
+          label: "Searching...",
+          description: `${mask} in ${folderLabel(sourceFolder)}`
+        }
+      ]);
+      this.updateTreeMessage();
+      this.changed.fire(undefined);
+    }
 
     try {
       const maxResults = configuredMaxResults();
       const pattern = new vscode.RelativePattern(sourceFolder, mask);
       const matches = await vscode.workspace.findFiles(pattern, undefined, maxResults);
-      const files = sortByRelativePath(
-        matches.map((match): FileNode => ({
-          kind: "file",
-          uri: match,
-          relativePath: relativePathFrom(sourceFolder, match)
-        }))
-      );
+      const files = matches.map((match): FileNode => ({
+        kind: "file",
+        uri: match,
+        relativePath: relativePathFrom(sourceFolder, match)
+      }));
 
       this.resultCount = files.length;
-      this.nodes = this.withFilterNode(files.length > 0
-        ? files
-        : [
-            {
-              kind: "message",
-              label: "No matching files",
-              description: `${mask} in ${folderLabel(sourceFolder)}`
-            }
-          ]);
-      this.updateTreeMessage();
+      this.files = files;
+      this.rebuildResultNodes({ fire: false });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.resultCount = undefined;
+      this.files = [];
       this.nodes = this.withFilterNode([
         {
           kind: "message",
@@ -497,6 +623,7 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
       this.updateTreeMessage();
       vscode.window.showErrorMessage(`Folder File Filter: ${message}`);
     } finally {
+      this.updateAutoRefreshWatcher();
       this.changed.fire(undefined);
     }
   }
@@ -511,7 +638,13 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
 
   private async promptForMask(defaultMask: string, sourceFolder?: vscode.Uri): Promise<string | undefined> {
     const folderExtensionMasks = sourceFolder ? await this.folderExtensionMasksFor(sourceFolder) : [];
-    const mask = await promptForMask(defaultMask, this.recentMasks(), configuredMaskPresets(), folderExtensionMasks);
+    const mask = await promptForMask(
+      defaultMask,
+      this.recentMasks(),
+      configuredMaskPresets(),
+      folderExtensionMasks,
+      configuredSavedFilters()
+    );
     if (mask) {
       await this.state.update(RECENT_MASKS_KEY, updatedRecentMasks(this.recentMasks(), mask, RECENT_MASK_LIMIT));
     }
@@ -595,6 +728,60 @@ class FolderFileFilterProvider implements vscode.TreeDataProvider<FolderFileFilt
     return [filterNode, ...nodes];
   }
 
+  private rebuildResultNodes(options: { fire?: boolean } = {}): void {
+    const files = sortFiles(this.files, configuredSortBy());
+    const body = files.length > 0
+      ? configuredGroupByExtension()
+        ? groupFilesByExtension(files)
+        : files
+      : [
+          {
+            kind: "message" as const,
+            label: "No matching files",
+            description: this.sourceFolder && this.mask ? `${this.mask} in ${folderLabel(this.sourceFolder)}` : undefined
+          }
+        ];
+
+    this.nodes = this.withFilterNode(body);
+    this.updateTreeMessage();
+    if (options.fire !== false) {
+      this.changed.fire(undefined);
+    }
+  }
+
+  private scheduleAutoRefresh(): void {
+    if (!this.sourceFolder || !this.mask) {
+      return;
+    }
+
+    this.clearAutoRefreshTimer();
+    const sourceFolder = this.sourceFolder;
+    const mask = this.mask;
+    const origin = this.filterOrigin ?? "manual";
+    this.autoRefreshTimer = setTimeout(async () => {
+      this.autoRefreshTimer = undefined;
+      await this.search(sourceFolder, mask, origin, { quiet: true });
+    }, configuredAutoRefreshDebounceMs());
+  }
+
+  private disposeAutoRefreshWatcher(): void {
+    if (this.fileWatcher) {
+      this.fileWatcher.dispose();
+      this.fileWatcher = undefined;
+    }
+  }
+
+  private clearAutoRefreshTimer(): void {
+    if (this.autoRefreshTimer) {
+      clearTimeout(this.autoRefreshTimer);
+      this.autoRefreshTimer = undefined;
+    }
+  }
+
+  private savedFilterLabelForMask(mask: string): string | undefined {
+    return configuredSavedFilters().find((filter) => filter.mask === mask)?.label;
+  }
+
   private updateTreeMessage(): void {
     if (!this.treeView) {
       return;
@@ -672,7 +859,8 @@ async function promptForMask(
   defaultMask: string,
   recentMasks: readonly string[],
   presetMasks: readonly string[],
-  folderExtensionMasks: readonly string[]
+  folderExtensionMasks: readonly string[],
+  namedFilters: readonly NamedFilter[]
 ): Promise<string | undefined> {
   return new Promise((resolve) => {
     const quickPick = vscode.window.createQuickPick<MaskQuickPickItem>();
@@ -693,7 +881,7 @@ async function promptForMask(
     };
 
     const refreshItems = (): void => {
-      const items = createMaskQuickPickItems(quickPick.value, defaultMask, recentMasks, presetMasks, folderExtensionMasks);
+      const items = createMaskQuickPickItems(quickPick.value, defaultMask, recentMasks, presetMasks, folderExtensionMasks, namedFilters);
       quickPick.items = items;
       const activeItem = items.find((item) => item.mask);
       quickPick.activeItems = activeItem ? [activeItem] : [];
@@ -730,7 +918,8 @@ function createMaskQuickPickItems(
   defaultMask: string,
   recentMasks: readonly string[],
   presetMasks: readonly string[],
-  folderExtensionMasks: readonly string[]
+  folderExtensionMasks: readonly string[],
+  namedFilters: readonly NamedFilter[]
 ): MaskQuickPickItem[] {
   const items: MaskQuickPickItem[] = [];
   const added = new Set<string>();
@@ -741,11 +930,43 @@ function createMaskQuickPickItems(
   }
 
   addMaskSection(items, added, "Existing in this folder", folderExtensionMasks, "Folder extension");
+  addNamedFilterSection(items, added, "Saved filters", namedFilters);
   addMaskSection(items, added, "Current", [defaultMask], "Current mask");
   addMaskSection(items, added, "Recent", recentMasks, "Recent mask");
   addMaskSection(items, added, "Generic patterns", presetMasks, "Pattern");
 
   return items;
+}
+
+function addNamedFilterSection(
+  items: MaskQuickPickItem[],
+  added: Set<string>,
+  label: string,
+  filters: readonly NamedFilter[]
+): void {
+  const sectionItems: MaskQuickPickItem[] = [];
+
+  for (const filter of filters) {
+    const normalized = normalizeMask(filter.mask);
+    if (!normalized || added.has(normalized)) {
+      continue;
+    }
+
+    added.add(normalized);
+    sectionItems.push({
+      label: filter.label,
+      description: "Saved filter",
+      detail: normalized,
+      mask: normalized
+    });
+  }
+
+  if (sectionItems.length === 0) {
+    return;
+  }
+
+  items.push({ label, kind: vscode.QuickPickItemKind.Separator });
+  items.push(...sectionItems);
 }
 
 function addMaskSection(
@@ -800,6 +1021,11 @@ function configuredMaskPresets(): string[] {
   return normalizeMaskList(configured, DEFAULT_MASK_PRESETS);
 }
 
+function configuredSavedFilters(): NamedFilter[] {
+  const configured = vscode.workspace.getConfiguration("folderFileFilter").get<unknown>("savedFilters");
+  return normalizeNamedFilters(configured);
+}
+
 function configuredMaxResults(): number {
   const configured = vscode.workspace.getConfiguration("folderFileFilter").get<unknown>("maxResults");
   return normalizeMaxResults(configured, DEFAULT_MAX_RESULTS);
@@ -823,6 +1049,49 @@ function configuredAutoFilterFromActiveFile(): boolean {
 function configuredRestoreFocusAfterOpenDelayMs(): number {
   const configured = vscode.workspace.getConfiguration("folderFileFilter").get<unknown>("restoreFocusAfterOpenDelayMs");
   return normalizeRestoreFocusDelayMs(configured, DEFAULT_RESTORE_FOCUS_AFTER_OPEN_DELAY_MS);
+}
+
+function configuredAutoRefreshResults(): boolean {
+  const configured = vscode.workspace.getConfiguration("folderFileFilter").get<unknown>("autoRefreshResults");
+  return normalizeAutoRefreshResults(configured, DEFAULT_AUTO_REFRESH_RESULTS);
+}
+
+function configuredAutoRefreshDebounceMs(): number {
+  const configured = vscode.workspace.getConfiguration("folderFileFilter").get<unknown>("autoRefreshDebounceMs");
+  return normalizeAutoRefreshDebounceMs(configured, DEFAULT_AUTO_REFRESH_DEBOUNCE_MS);
+}
+
+function configuredSortBy(): FileSortMode {
+  const configured = vscode.workspace.getConfiguration("folderFileFilter").get<unknown>("sortBy");
+  return normalizeFileSortMode(configured, DEFAULT_SORT_BY);
+}
+
+function configuredGroupByExtension(): boolean {
+  const configured = vscode.workspace.getConfiguration("folderFileFilter").get<unknown>("groupByExtension");
+  return normalizeGroupByExtension(configured, DEFAULT_GROUP_BY_EXTENSION);
+}
+
+function groupFilesByExtension(files: readonly FileNode[]): GroupNode[] {
+  const grouped = new Map<string, FileNode[]>();
+  for (const file of files) {
+    const key = extensionLabel(file.relativePath);
+    grouped.set(key, [...(grouped.get(key) ?? []), file]);
+  }
+
+  return [...grouped.entries()]
+    .sort(([left], [right]) => left.localeCompare(right, undefined, { numeric: true }))
+    .map(([label, children]) => ({
+      kind: "group",
+      label,
+      description: `${children.length}`,
+      children
+    }));
+}
+
+function extensionLabel(relativePath: string): string {
+  const fileName = relativePath.replace(/\\/g, "/").split("/").pop() ?? relativePath;
+  const dotIndex = fileName.lastIndexOf(".");
+  return dotIndex > 0 && dotIndex < fileName.length - 1 ? fileName.slice(dotIndex).toLowerCase() : "No extension";
 }
 
 function executeViewFocus(): void {

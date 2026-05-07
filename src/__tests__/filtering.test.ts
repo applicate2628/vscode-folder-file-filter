@@ -6,6 +6,11 @@ import {
   inferMaskFromFileName,
   normalizeAutoFilterFromActiveFile,
   normalizeAutoFilterFilesFromSelectedFile,
+  normalizeAutoRefreshDebounceMs,
+  normalizeAutoRefreshResults,
+  normalizeFileSortMode,
+  normalizeGroupByExtension,
+  normalizeNamedFilters,
   normalizeMaskList,
   normalizeMask,
   normalizeMaxResults,
@@ -13,6 +18,7 @@ import {
   normalizeRestoreFocusDelayMs,
   pickSelectionKeyToOpen,
   rememberRecentMask,
+  sortFiles,
   sortByRelativePath
 } from "../filtering";
 
@@ -88,6 +94,44 @@ test("normalizeRestoreFocusDelayMs keeps non-negative finite numbers and falls b
   assert.equal(normalizeRestoreFocusDelayMs("250", 150), 150);
 });
 
+test("normalizeAutoRefreshResults keeps booleans and falls back for invalid values", () => {
+  assert.equal(normalizeAutoRefreshResults(true, false), true);
+  assert.equal(normalizeAutoRefreshResults(false, true), false);
+  assert.equal(normalizeAutoRefreshResults("true", false), false);
+});
+
+test("normalizeAutoRefreshDebounceMs keeps positive finite integers", () => {
+  assert.equal(normalizeAutoRefreshDebounceMs(250.8, 400), 250);
+  assert.equal(normalizeAutoRefreshDebounceMs(0, 400), 400);
+  assert.equal(normalizeAutoRefreshDebounceMs(Number.NaN, 400), 400);
+});
+
+test("normalizeFileSortMode accepts known sort modes", () => {
+  assert.equal(normalizeFileSortMode("path", "name"), "path");
+  assert.equal(normalizeFileSortMode("name", "path"), "name");
+  assert.equal(normalizeFileSortMode("extension", "path"), "extension");
+  assert.equal(normalizeFileSortMode("mtime", "path"), "path");
+});
+
+test("normalizeGroupByExtension keeps booleans and falls back for invalid values", () => {
+  assert.equal(normalizeGroupByExtension(true, false), true);
+  assert.equal(normalizeGroupByExtension(false, true), false);
+  assert.equal(normalizeGroupByExtension("true", false), false);
+});
+
+test("normalizeNamedFilters trims labels and masks and drops invalid entries", () => {
+  assert.deepEqual(
+    normalizeNamedFilters([
+      { label: " Docs ", mask: " **/*.md " },
+      { label: "", mask: "**/*.json" },
+      { label: "Tests", mask: "" },
+      { label: "Docs", mask: "**/*.txt" },
+      42
+    ]),
+    [{ label: "Docs", mask: "**/*.md" }]
+  );
+});
+
 test("inferMaskFromFileName uses the selected file extension", () => {
   assert.equal(inferMaskFromFileName("settings.json"), "*.json");
   assert.equal(inferMaskFromFileName("component.test.ts"), "*.ts");
@@ -138,6 +182,34 @@ test("sortByRelativePath returns files ordered by relative path", () => {
     { relativePath: "alpha/file.md" },
     { relativePath: "alpha/next.md" },
     { relativePath: "zeta/file.md" }
+  ]);
+});
+
+test("sortFiles supports path, name, and extension modes", () => {
+  const files = [
+    { relativePath: "beta/readme.md" },
+    { relativePath: "alpha/config.json" },
+    { relativePath: "zeta/app.ts" },
+    { relativePath: "alpha/app.md" }
+  ];
+
+  assert.deepEqual(sortFiles(files, "path").map((file) => file.relativePath), [
+    "alpha/app.md",
+    "alpha/config.json",
+    "beta/readme.md",
+    "zeta/app.ts"
+  ]);
+  assert.deepEqual(sortFiles(files, "name").map((file) => file.relativePath), [
+    "alpha/app.md",
+    "zeta/app.ts",
+    "alpha/config.json",
+    "beta/readme.md"
+  ]);
+  assert.deepEqual(sortFiles(files, "extension").map((file) => file.relativePath), [
+    "alpha/config.json",
+    "alpha/app.md",
+    "beta/readme.md",
+    "zeta/app.ts"
   ]);
 });
 

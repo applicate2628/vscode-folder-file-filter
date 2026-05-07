@@ -110,3 +110,64 @@ test("mask picker shows folder extensions before generic preset patterns", () =>
   assert.match(extensionSource, /await this\.folderExtensionMasksFor\(sourceFolder\)/);
   assert.match(extensionSource, /addMaskSection\(items, added, "Existing in this folder", folderExtensionMasks, "Folder extension"\)/);
 });
+
+test("extension supports saved named filters in the mask picker", () => {
+  const packageJson = JSON.parse(readFileSync(resolve(__dirname, "../../package.json"), "utf8"));
+  const commands = packageJson.contributes.commands as Array<{ command: string; title: string }>;
+  const properties = packageJson.contributes.configuration.properties as Record<string, unknown>;
+  const viewTitle = packageJson.contributes.menus["view/title"] as Array<{ command: string; when: string }>;
+  const extensionSource = readFileSync(resolve(__dirname, "../../src/extension.ts"), "utf8");
+
+  assert.ok(commands.some((command) =>
+    command.command === "folderFileFilter.saveFilter"
+    && command.title === "Folder File Filter: Save Filter"
+  ));
+  assert.ok(viewTitle.some((item) =>
+    item.command === "folderFileFilter.saveFilter"
+    && item.when === "view == folderFileFilter.results"
+  ));
+  assert.ok(properties["folderFileFilter.savedFilters"]);
+  assert.match(extensionSource, /vscode\.commands\.registerCommand\("folderFileFilter\.saveFilter"/);
+  assert.match(extensionSource, /public async saveCurrentFilter\(\): Promise<void>/);
+  assert.match(extensionSource, /configuredSavedFilters\(\)/);
+  assert.match(extensionSource, /addNamedFilterSection\(items, added, "Saved filters", namedFilters\)/);
+});
+
+test("extension can sort and group results without replacing the search owner", () => {
+  const packageJson = JSON.parse(readFileSync(resolve(__dirname, "../../package.json"), "utf8"));
+  const commands = packageJson.contributes.commands as Array<{ command: string; title: string }>;
+  const properties = packageJson.contributes.configuration.properties as Record<string, unknown>;
+  const viewTitle = packageJson.contributes.menus["view/title"] as Array<{ command: string; when: string }>;
+  const extensionSource = readFileSync(resolve(__dirname, "../../src/extension.ts"), "utf8");
+
+  assert.ok(commands.some((command) => command.command === "folderFileFilter.changeSort"));
+  assert.ok(commands.some((command) => command.command === "folderFileFilter.toggleGroupByExtension"));
+  assert.ok(viewTitle.some((item) => item.command === "folderFileFilter.changeSort"));
+  assert.ok(viewTitle.some((item) => item.command === "folderFileFilter.toggleGroupByExtension"));
+  assert.ok(properties["folderFileFilter.sortBy"]);
+  assert.ok(properties["folderFileFilter.groupByExtension"]);
+  assert.match(extensionSource, /type FolderFileFilterNode = FilterNode \| GroupNode \| FileNode \| MessageNode/);
+  assert.match(extensionSource, /interface GroupNode/);
+  assert.match(extensionSource, /private files: FileNode\[\] = \[\];/);
+  assert.match(extensionSource, /vscode\.commands\.registerCommand\("folderFileFilter\.toggleGroupByExtension", async \(\) =>/);
+  assert.match(extensionSource, /public async toggleGroupByExtension\(\): Promise<void>/);
+  assert.match(extensionSource, /await vscode\.workspace\.getConfiguration\("folderFileFilter"\)\.update\("groupByExtension", next, vscode\.ConfigurationTarget\.Global\)/);
+  assert.match(extensionSource, /private rebuildResultNodes\([^)]*\): void/);
+  assert.match(extensionSource, /sortFiles\(this\.files, configuredSortBy\(\)\)/);
+  assert.match(extensionSource, /groupFilesByExtension\(files\)/);
+});
+
+test("extension live-refreshes active filter results through one search pipeline", () => {
+  const packageJson = JSON.parse(readFileSync(resolve(__dirname, "../../package.json"), "utf8"));
+  const properties = packageJson.contributes.configuration.properties as Record<string, unknown>;
+  const extensionSource = readFileSync(resolve(__dirname, "../../src/extension.ts"), "utf8");
+
+  assert.ok(properties["folderFileFilter.autoRefreshResults"]);
+  assert.ok(properties["folderFileFilter.autoRefreshDebounceMs"]);
+  assert.match(extensionSource, /private fileWatcher: vscode\.FileSystemWatcher \| undefined/);
+  assert.match(extensionSource, /private autoRefreshTimer: ReturnType<typeof setTimeout> \| undefined/);
+  assert.match(extensionSource, /vscode\.workspace\.createFileSystemWatcher\(new vscode\.RelativePattern\(this\.sourceFolder, this\.mask\)\)/);
+  assert.match(extensionSource, /private scheduleAutoRefresh\(\): void/);
+  assert.match(extensionSource, /await this\.search\(sourceFolder, mask, origin, \{ quiet: true \}\)/);
+  assert.match(extensionSource, /event\.affectsConfiguration\("folderFileFilter\.autoRefreshResults"\)/);
+});

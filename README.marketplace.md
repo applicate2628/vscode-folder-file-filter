@@ -20,11 +20,14 @@ Filter folder files by glob mask, file extension, or active file context inside 
 - Adds `Folder File Filter: Open Settings` to the Command Palette.
 - Prompts for a glob mask such as `*.md`, `**/*.test.*`, `**/docs/**`, or `**/*backup*`.
 - Shows extensions that already exist in the selected folder before recent masks and generic pattern presets.
+- Can save named filters and show them in the mask picker.
 - Shows the active mask as a clickable `Mask: ...` row at the top of the results view.
 - Shows matching files from the selected source folder as clickable tree items.
 - Can infer one filter from multiple selected files, such as `{*.json,*.md}`.
 - Supports native Ctrl/Shift multi-selection and result context-menu actions for open, open to side, reveal in File Explorer, and copy path.
+- Supports sorting by path, name, or extension, plus optional grouping by extension.
 - Can follow the active file tab and update the filter when a file with another extension is opened.
+- Can auto-refresh active results when matching files are created, changed, or deleted.
 - Supports refresh and clear actions from the `Folder File Filter` view title.
 - Can open the highlighted result while moving through the results list.
 
@@ -48,6 +51,7 @@ For files, right-click a file in Explorer and run `Folder File Filter`. The comm
 The `Folder File Filter` results view also supports native Ctrl/Shift multi-selection.
 To change the active mask without reopening the Explorer context menu, click the `Mask: ...` row at the top of the results view or use the `Change Mask` button in the view title. The title button uses the active Explorer file or folder first, then the active editor file's folder, then the last source folder.
 To switch folders explicitly from the results view, select a file or folder in Explorer and use `Folder File Filter: Change Source Folder` from the view title.
+Use `Save Filter` to name the current mask, `Change Sort` to sort results by path, name, or extension, and `Toggle Group By Extension` to fold results into extension groups.
 
 To open extension settings, run `Folder File Filter: Open Settings` from the Command Palette.
 
@@ -72,6 +76,16 @@ To open extension settings, run `Folder File Filter: Open Settings` from the Com
     "**/*_backup*"
   ],
   "folderFileFilter.maxResults": 500,
+  "folderFileFilter.savedFilters": [
+    {
+      "label": "Markdown docs",
+      "mask": "**/*.md"
+    }
+  ],
+  "folderFileFilter.sortBy": "path",
+  "folderFileFilter.groupByExtension": false,
+  "folderFileFilter.autoRefreshResults": true,
+  "folderFileFilter.autoRefreshDebounceMs": 300,
   "folderFileFilter.openOnSelection": false,
   "folderFileFilter.autoFilterFilesFromSelectedFile": true,
   "folderFileFilter.autoFilterFromActiveFile": true,
@@ -79,9 +93,13 @@ To open extension settings, run `Folder File Filter: Open Settings` from the Com
 }
 ```
 
-The mask picker shows extension masks found in the selected folder, the current/default mask, recently used manual masks, and `folderFileFilter.maskPresets`.
+The mask picker shows extension masks found in the selected folder, saved named filters, the current/default mask, recently used manual masks, and `folderFileFilter.maskPresets`.
 Folder extension suggestions scan only the selected folder's top level and are sorted by frequency, then by extension name.
+Saved filters are stored in `folderFileFilter.savedFilters` and can be updated through the `Save Filter` view action.
 Recent masks are stored in VS Code's extension global state. Automatic active-file filters do not add masks to that history.
+Use `folderFileFilter.sortBy` and `folderFileFilter.groupByExtension` to control result presentation without changing the active search.
+Disable `folderFileFilter.autoRefreshResults` if file-system changes should not refresh the active result list automatically.
+Increase `folderFileFilter.autoRefreshDebounceMs` if a tool writes many matching files in a short burst.
 Enable `folderFileFilter.openOnSelection` to open the highlighted result while moving through the list with Up/Down. Files open with their default editor in preview mode and focus stays in the `Folder File Filter` view.
 Disable `folderFileFilter.autoFilterFilesFromSelectedFile` to confirm or edit the inferred mask before the file context menu command runs.
 Disable `folderFileFilter.autoFilterFromActiveFile` if opening a file in the editor should not update the active filter automatically.
@@ -106,12 +124,15 @@ See the repository `LICENSE` for the full MPL-2.0 text and `NOTICE` for copyrigh
 - `Explorer`: the VS Code sidebar that shows workspace folders and contributed views.
 - `Glob`: a path matching pattern such as `**/*.md`, `**/*.json`, or `**/*.test.ts`.
 - `Mask picker`: the dropdown used to type or choose a glob mask.
+- `Auto-refresh`: automatic rerun of the active filter when matching files change.
 - `Command Palette`: the VS Code command launcher opened with commands such as `Show All Commands`.
 - `Ctrl` and `Shift`: keyboard modifier keys used by VS Code Explorer for multi-selection.
 - `Custom editor`: a VS Code editor provided by an extension for a specific file type.
 - `MPL`: Mozilla Public License.
 - `Open VSX`: the open extension registry used by VS Code-compatible editors.
 - `rating`: a user review or score on an extension marketplace.
+- `Saved filter`: a named glob mask stored in extension settings.
+- `Sort mode`: the selected result ordering, such as path, file name, or extension.
 - `star`: a GitHub repository star used as a lightweight public signal of user interest.
 - `Telemetry`: automatic usage or diagnostic data collection; this extension does not collect it.
 - `VS Code`: Visual Studio Code.
